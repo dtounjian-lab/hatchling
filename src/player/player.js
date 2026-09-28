@@ -34,6 +34,7 @@ export class Player {
     this.safe = false;
     this.hidden = false;
     this.ext = new THREE.Vector3();
+    this.landDrift = new THREE.Vector3();
     this.eggs = false;
     this.slowT = 0;
     this.hurtT = 10;
@@ -62,10 +63,11 @@ export class Player {
     return lerp(hatch, 2.0 * s, Math.pow(this.growth, 0.85));
   }
   get maxSpeed() {
-    return lerp(2.8, 7.8, this.growth) * this.species.stats.speed * (this.eggs ? 0.9 : 1) * (this.slowT > 0 ? 0.6 : 1);
+    const airBoost = 1 + 0.15 * smoothstep(0.75, 1, this.breath);
+    return lerp(2.8, 7.8, this.growth) * this.species.stats.speed * (this.eggs ? 0.9 : 1) * (this.slowT > 0 ? 0.6 : 1) * airBoost * (this.inCurrent ? 1.55 : 1);
   }
   get turnRate() { return lerp(3.0, 1.8, this.growth) * this.species.stats.agility * (this.eggs ? 0.9 : 1); }
-  get breathCap() { return lerp(40, 115, this.growth) * this.species.stats.dive; }
+  get breathCap() { return lerp(40, 115, this.growth) * this.species.stats.dive * 10; }
   get maxHealth() { return 100 * this.species.stats.health; }
   get landMax() { return lerp(2.5, 1.7, this.growth) * Math.sqrt(this.species.stats.speed) * (this.eggs ? 0.85 : 1); }
 
@@ -163,8 +165,9 @@ export class Player {
     if (!(I.sprint && len > 0.01)) this.stamina = Math.min(1, this.stamina + dt / 3.2);
     this.landSpeed = damp(this.landSpeed, target, 7, dt);
     const sp = this.landSpeed;
-    this.pos.x += Math.sin(this.yaw) * sp * dt;
-    this.pos.z += Math.cos(this.yaw) * sp * dt;
+    this.pos.x += Math.sin(this.yaw) * sp * dt + this.landDrift.x * dt;
+    this.pos.z += Math.cos(this.yaw) * sp * dt + this.landDrift.z * dt;
+    this.landDrift.set(0, 0, 0);
     // obstacles
     const r = this.size * 0.45;
     for (const o of this.game.obstacles) {
@@ -230,7 +233,7 @@ export class Player {
     if (thrusting) {
       const ph = this.stroke * TAU;
       const power = 0.32 + 0.68 * Math.pow(Math.max(0, -Math.cos(ph)), 1.5) * 1.35;
-      this.vel.addScaledVector(fwd, vmax * 1.05 * power * dt);
+      this.vel.addScaledVector(fwd, vmax * 1.05 * power * (this.species.stats.accel ?? 1) * dt);
     }
     if (I.back) this.vel.multiplyScalar(Math.exp(-1.8 * dt));
     if (vIn) this.vel.y += vIn * vmax * 0.55 * dt;
@@ -316,7 +319,7 @@ export class Player {
     m.group.visible = this.visible;
     m.group.position.copy(this.pos);
     m.group.rotation.set(-this.pitch, this.yaw, this.roll, 'YXZ');
-    m.group.scale.setScalar(size);
+    m.group.scale.setScalar(size * (this.displayScale || 1));
     m.setMaturity(this.growth);
     const isLand = this.mode === 'land' || (this.mode === 'locked' && this.lockAnim !== 'swim');
     const bob = isLand ? Math.abs(Math.sin(this.stroke * TAU)) * 0.035 * this.amp : Math.sin(this.stroke * TAU) * 0.02 * this.amp;

@@ -1,8 +1,10 @@
-// Tall swaying kelp forest with translucent, sun-dappled blades. Instanced.
+// The Sargassum Line: golden floating mats gathered into windrows, with fronds
+// hanging beneath them. Where hatchlings spend their lost years. Instanced.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { std } from '../core/shared.js';
 import { groundHeight } from './terrain.js';
+import { chunkify, cullChunks } from './chunks.js';
 import { rand, fbm2 } from '../core/util.js';
 
 function kelpGeo() {
@@ -70,30 +72,77 @@ export function createKelp(scene) {
       `,
     }
   );
-  const N = 1150;
+  // windrows of floating mats across the sargassum zone, plus a scattering over the reef
+  const spots = [];
+  for (let row = 0; row < 9; row++) {
+    const z0 = -440 - row * 31;
+    for (let x = -200; x < 200; x += rand(3.5, 7)) {
+      const z = z0 + Math.sin(x * 0.018 + row * 1.7) * 12 + rand(-3, 3);
+      if (fbm2(x * 0.03 + row, z * 0.03, 2) < -0.35) continue;
+      spots.push([x, z, rand(1.6, 4.5)]);
+    }
+  }
+  for (let i = 0; i < 90; i++) spots.push([rand(-150, 150), rand(-400, -95), rand(1.2, 3.2)]);
+
+  const N = spots.length * 2;
   const mesh = new THREE.InstancedMesh(geo, mat, N);
   const col = new THREE.Color();
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3(), e = new THREE.Euler();
-  let n = 0, guard = 0;
-  while (n < N && guard++ < N * 30) {
-    const z = rand(-712, -428);
-    const x = rand(-195, 195);
-    const d = fbm2(x * 0.02 + 3, z * 0.02, 3);
-    if (d < -0.05 && Math.random() < 0.8) continue;
-    const y = groundHeight(x, z);
-    const height = Math.max(6, -y - rand(0.5, 5));
-    p.set(x, y - 0.2, z);
-    q.setFromEuler(e.set(0, rand(0, Math.PI * 2), 0));
-    const w = rand(8, 12);
-    s.set(w, height, w);
-    m.compose(p, q, s);
-    mesh.setMatrixAt(n, m);
-    col.set(['#8a7a2a', '#6f7a28', '#9a8233', '#5f6b25'][n % 4]).offsetHSL(rand(-0.02, 0.02), 0, rand(-0.05, 0.05));
-    mesh.setColorAt(n, col);
-    n++;
+  let n = 0;
+  for (const [x, z, r] of spots) {
+    const floor = groundHeight(x, z);
+    const fronds = r > 2.5 ? 2 : 1;
+    for (let k = 0; k < fronds && n < N; k++) {
+      const len = Math.min(-floor - 1.5, rand(3, 7) * (r / 3));
+      if (len < 1.2) continue;
+      p.set(x + rand(-r, r) * 0.4, -0.35, z + rand(-r, r) * 0.4);
+      q.setFromEuler(e.set(0, rand(0, Math.PI * 2), 0));
+      const w = rand(2.2, 3.4) * (0.6 + r * 0.15);
+      s.set(w, -len, w); // hang down from the mat
+      m.compose(p, q, s);
+      mesh.setMatrixAt(n, m);
+      col.set(['#b8862b', '#a57822', '#c99a38', '#8f6a1e'][n % 4]).offsetHSL(rand(-0.02, 0.02), 0, rand(-0.05, 0.05));
+      mesh.setColorAt(n, col);
+      n++;
+    }
   }
   mesh.count = n;
   mesh.computeBoundingSphere();
   scene.add(mesh);
-  return { mesh };
+
+  // the floating mats themselves: tangles of leaves and little gas-filled floats
+  const parts = [];
+  for (let i = 0; i < 46; i++) {
+    const a = Math.random() * Math.PI * 2, rr = Math.sqrt(Math.random());
+    const berry = new THREE.SphereGeometry(0.05 + Math.random() * 0.04, 4, 3);
+    berry.translate(Math.cos(a) * rr, (Math.random() - 0.4) * 0.14, Math.sin(a) * rr);
+    parts.push(berry.toNonIndexed());
+  }
+  for (let i = 0; i < 40; i++) {
+    const a = Math.random() * Math.PI * 2, rr = Math.sqrt(Math.random()) * 1.05;
+    const leaf = new THREE.PlaneGeometry(0.08, 0.3, 1, 2);
+    leaf.rotateX(-Math.PI / 2 + (Math.random() - 0.5) * 0.8);
+    leaf.rotateY(Math.random() * Math.PI);
+    leaf.translate(Math.cos(a) * rr, (Math.random() - 0.5) * 0.12, Math.sin(a) * rr);
+    parts.push(leaf.toNonIndexed());
+  }
+  const matGeo = mergeGeometries(parts.map((q2) => { q2.deleteAttribute('uv'); return q2; }));
+  matGeo.computeVertexNormals();
+  const raftMat = std({ color: 0xffffff, roughness: 0.6, side: THREE.DoubleSide }, {
+    key: 'sargassumRaft', caustics: 0.3, rim: 0.3,
+    vertexTransform: `transformed.y += sin(uTime * 0.9 + position.x * 2.0 + instanceMatrix[3].x * 0.3) * 0.04;`,
+    fragEmissive: `totalEmissiveRadiance += diffuseColor.rgb * uSunColor * 0.3 * uDay;`,
+  });
+  const rafts = new THREE.InstancedMesh(matGeo, raftMat, spots.length);
+  spots.forEach(([x, z, r], i) => {
+    q.setFromEuler(e.set(0, rand(0, Math.PI * 2), 0));
+    m.compose(p.set(x, -0.25, z), q, s.set(r, 1.2, r * rand(0.6, 1.1)));
+    rafts.setMatrixAt(i, m);
+    rafts.setColorAt(i, col.set(['#c7962f', '#b8862b', '#d8a843'][i % 3]));
+  });
+  rafts.computeBoundingSphere();
+  scene.add(rafts);
+  const chunks = [...chunkify(mesh, scene, 100), ...chunkify(rafts, scene, 100)];
+  return { chunks, update(cam, range) { cullChunks(chunks, cam, range); } };
+
 }

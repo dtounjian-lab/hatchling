@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { std } from '../core/shared.js';
 import { groundHeight } from './terrain.js';
+import { chunkify, cullChunks } from './chunks.js';
 import { rand, pick, fbm2, mulberry32 } from '../core/util.js';
 
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3();
@@ -26,7 +27,7 @@ function branchingGeo(seed) {
     parts.push(orientedCylinder(start, dir, len, rad, rad * 0.72));
     const end = start.clone().addScaledVector(dir, len);
     if (depth === 0) {
-      const tip = new THREE.SphereGeometry(rad * 0.9, 7, 5);
+      const tip = new THREE.SphereGeometry(rad * 0.9, 5, 3);
       tip.translate(end.x, end.y, end.z);
       parts.push(tip);
       return;
@@ -195,15 +196,29 @@ export function createReef(scene) {
 
   const coralMat = std({ roughness: 0.7, color: 0xffffff }, {
     key: 'coral', caustics: 1.1, rim: 0.2,
-    fragDiffuse: 'diffuseColor.rgb *= mix(0.62, 1.3, smoothstep(0.05, 1.3, vObj.y)); diffuseColor.rgb += vec3(0.08) * smoothstep(1.0, 1.5, vObj.y);',
+    fragDiffuse: 'diffuseColor.rgb *= mix(0.62, 1.2, smoothstep(0.05, 1.3, vObj.y)); diffuseColor.rgb += vec3(0.1, 0.09, 0.07) * smoothstep(1.0, 1.5, vObj.y); float pol = vnoise(vWPos.xz * 38.0 + vWPos.y * 27.0); diffuseColor.rgb *= 0.82 + 0.28 * pol; diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.55, smoothstep(0.72, 0.8, vnoise(vWPos.xz * 60.0 + vWPos.y * 44.0)) * 0.7);',
     fragEmissive: 'totalEmissiveRadiance += diffuseColor.rgb * 0.06;',
   });
   const brainMat = std({ roughness: 0.8, color: 0xffffff }, {
     key: 'brain', caustics: 1.1,
     fragDiffuse: /* glsl */ `
       float mz = abs(sin(fbm2(vObj.xz * 4.0 + vObj.y * 2.0) * 26.0));
-      diffuseColor.rgb *= mix(0.55, 1.08, smoothstep(0.1, 0.5, mz));
+      diffuseColor.rgb *= mix(0.5, 1.08, smoothstep(0.1, 0.5, mz));
+      diffuseColor.rgb *= 0.9 + 0.15 * vnoise(vObj.xz * 30.0);
     `,
+  });
+  const boulderMat = std({ roughness: 0.85, color: 0xffffff }, {
+    key: 'boulder', caustics: 1.1,
+    fragDiffuse: /* glsl */ `
+      vec2 vr = voronoi3(vObj * 11.0);
+      float cup = smoothstep(0.32, 0.12, vr.x);
+      diffuseColor.rgb *= mix(1.0, 0.55, cup) * (0.85 + 0.2 * vnoise(vObj.xz * 5.0));
+    `,
+    fragEmissive: 'totalEmissiveRadiance += diffuseColor.rgb * 0.05;',
+  });
+  const barrelMat = std({ roughness: 0.9, color: 0xffffff, side: THREE.DoubleSide }, {
+    key: 'barrel', caustics: 1.0,
+    fragDiffuse: 'diffuseColor.rgb *= (0.75 + 0.3 * abs(sin(atan(vObj.x, vObj.z) * 9.0))) * (0.8 + 0.3 * smoothstep(0.0, 1.0, vObj.y)); diffuseColor.rgb *= 0.9 + 0.2 * vnoise(vObj.xy * 25.0);',
   });
   const fanMat = std({ roughness: 0.8, color: 0xffffff, side: THREE.DoubleSide, alphaTest: 0.5, transparent: false }, {
     key: 'fan', caustics: 0.8,
@@ -247,30 +262,48 @@ export function createReef(scene) {
   });
 
   const branch = [branchingGeo(3), branchingGeo(11)];
-  const bColors = ['#ff6f86', '#ffae57', '#c07bff', '#ffd166', '#5fe0d0', '#ff9ecd', '#8bd46a'];
-  scatter(add(branch[0], coralMat, 800), 800, reefSampler(0.8, 2.8), bColors, { tilt: 0.25 });
-  scatter(add(branch[1], coralMat, 800), 800, reefSampler(0.8, 2.8), bColors, { tilt: 0.25 });
+  const bColors = ['#b58a5a', '#a07c4e', '#8f8b55', '#c09080', '#caa56e', '#a86a58', '#d0b48a', '#8a6a8a'];
+  scatter(add(branch[0], coralMat, 560), 560, reefSampler(0.8, 2.8), bColors, { tilt: 0.25 });
+  scatter(add(branch[1], coralMat, 560), 560, reefSampler(0.8, 2.8), bColors, { tilt: 0.25 });
 
-  const brainGeo = new THREE.SphereGeometry(1, 28, 14, 0, Math.PI * 2, 0, Math.PI * 0.55);
+  const brainGeo = new THREE.SphereGeometry(1, 22, 11, 0, Math.PI * 2, 0, Math.PI * 0.55);
   brainGeo.scale(1, 0.7, 1);
-  scatter(add(brainGeo, brainMat, 520), 520, reefSampler(0.5, 1.8), ['#d9a441', '#b5c95a', '#e58f65', '#9bc7a4', '#c7a0d8'], { sink: 0.15 });
+  scatter(add(brainGeo, brainMat, 380), 380, reefSampler(0.5, 1.8), ['#b8a060', '#a3985c', '#c2a57a', '#8f9a62', '#9a8a5a'], { sink: 0.15 });
+  const boulderGeo = new THREE.SphereGeometry(1, 22, 11, 0, Math.PI * 2, 0, Math.PI * 0.6);
+  boulderGeo.scale(1, 0.85, 1);
+  scatter(add(boulderGeo, boulderMat, 220), 220, reefSampler(0.7, 2.4), ['#9c8f5e', '#a88d6a', '#8a8a66', '#b59a72', '#7f8a70'], { sink: 0.2, tilt: 0.3 });
+  const barrelPts = [];
+  for (let i = 0; i <= 12; i++) { const t = i / 12; barrelPts.push(new THREE.Vector2(0.35 + Math.sin(t * 2.4) * 0.35 + (i === 12 ? 0.05 : 0), t * 1.4)); }
+  for (let i = 12; i >= 1; i--) { const t = i / 12; barrelPts.push(new THREE.Vector2(0.25 + Math.sin(t * 2.4) * 0.3, t * 1.36)); }
+  const barrelGeo = new THREE.LatheGeometry(barrelPts, 24);
+  scatter(add(barrelGeo, barrelMat, 140), 140, reefSampler(0.7, 1.8), ['#8b4a2c', '#a0582e', '#7a4a36', '#9a6a3a'], { sink: 0.05, tilt: 0.15 });
 
   const fanGeo = new THREE.PlaneGeometry(1.4, 1.3, 6, 8);
   fanGeo.translate(0, 0.62, 0);
-  scatter(add(fanGeo, fanMat, 420), 420, reefSampler(1.0, 2.6), ['#c2327a', '#7b3fb0', '#e0533f', '#f08a4b', '#ffcf5a'], { tilt: 0.1, sink: 0.0 });
+  scatter(add(fanGeo, fanMat, 320), 320, reefSampler(1.0, 2.6), ['#7a3d8a', '#8a4a8a', '#a0527a', '#6b3d7a', '#c0703a'], { tilt: 0.1, sink: 0.0 });
 
   const tube = [tubeGeo(5), tubeGeo(9)];
-  const tColors = ['#ff9a3c', '#9d6bff', '#ffcf3c', '#3cc7ff', '#ff5f7e'];
-  scatter(add(tube[0], tubeMat, 320), 320, reefSampler(0.7, 1.8), tColors, { stretch: true });
-  scatter(add(tube[1], tubeMat, 320), 320, reefSampler(0.7, 1.8), tColors, { stretch: true });
+  const tColors = ['#c46a2e', '#8a4fa0', '#c9a03c', '#a4432e', '#6a5aa0'];
+  scatter(add(tube[0], tubeMat, 220), 220, reefSampler(0.7, 1.8), tColors, { stretch: true });
+  scatter(add(tube[1], tubeMat, 220), 220, reefSampler(0.7, 1.8), tColors, { stretch: true });
 
-  scatter(add(plateGeo(), coralMat, 260), 260, reefSampler(0.5, 1.3), ['#6f9a7a', '#a88a60', '#7f94b0', '#b8935a'], { tilt: 0.12 });
+  scatter(add(plateGeo(), coralMat, 260), 260, reefSampler(0.5, 1.3), ['#8a7a55', '#9a8a64', '#7a8060', '#a48860'], { tilt: 0.12 });
 
-  scatter(add(anemoneGeo(), anemMat, 480), 480, reefSampler(1.0, 2.2), ['#ff8fc7', '#9effc9', '#ffd27a', '#b8a4ff', '#ff7a5c'], { tilt: 0.15 });
+  scatter(add(anemoneGeo(), anemMat, 340), 340, reefSampler(1.0, 2.2), ['#d98fb0', '#a8d6b0', '#e0c07a', '#b8a4d0', '#e0906a'], { tilt: 0.15 });
 
-  const whip = new THREE.CylinderGeometry(0.02, 0.05, 2.4, 5, 8);
-  whip.translate(0, 1.2, 0);
-  scatter(add(whip, whipMat, 480), 480, reefSampler(0.8, 2.0), ['#ffb347', '#ff5e5b', '#f7e36b', '#d56bff'], { tilt: 0.3 });
+  // sea rods: branching soft corals typical of Gulf hardbottom
+  const rodParts = [];
+  for (let k = 0; k < 5; k++) {
+    const h = 1.4 + Math.random() * 1.4;
+    const r = new THREE.CylinderGeometry(0.018, 0.045, h, 5, 8);
+    r.translate(0, h / 2, 0);
+    r.rotateZ((Math.random() - 0.5) * 0.7);
+    r.rotateY(k * 1.3);
+    rodParts.push(r.toNonIndexed());
+  }
+  const whip = mergeGeometries(rodParts.map((g) => { g.deleteAttribute('uv'); return g; }));
+  whip.computeVertexNormals();
+  scatter(add(whip, whipMat, 380), 380, reefSampler(0.8, 1.8), ['#8a4a6a', '#b9783a', '#7a5a3a', '#a86a8a', '#6a4a5a'], { tilt: 0.3 });
 
   // Rocks in every zone
   const rocks = [rockGeo(1), rockGeo(2)];
@@ -284,6 +317,7 @@ export function createReef(scene) {
     scatter(add(rocks[i % 2], rockMat, rz.n), rz.n, () => [rand(-rz.x, rz.x), rand(rz.z[0], rz.z[1]), rand(rz.s[0], rz.s[1])], rz.c, { sink: 0.35, tilt: 0.5 });
   }
 
-  for (const m of meshes) { m.matrixAutoUpdate = false; m.updateMatrix(); }
-  return { group, meshes };
+  const chunks = [];
+  for (const m of meshes) chunks.push(...chunkify(m, group, 90));
+  return { group, chunks, update(cam, range) { cullChunks(chunks, cam, range); } };
 }

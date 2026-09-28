@@ -198,3 +198,48 @@ export class Nets {
 }
 
 export { U };
+
+// A ghost net: abandoned fishing gear drifting through the Gulf.
+export class GhostNet {
+  constructor(scene) {
+    let g = new THREE.IcosahedronGeometry(1, 4);
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+      const n = 1 + 0.35 * Math.sin(x * 3.1 + y * 2.3) * Math.cos(z * 2.7 - x) + 0.2 * Math.sin(y * 7 + z * 5);
+      p.setXYZ(i, x * n * 1.3, y * n * 0.8, z * n);
+    }
+    g.computeVertexNormals();
+    this.mat = new THREE.ShaderMaterial({
+      transparent: true, side: THREE.DoubleSide, depthWrite: false, fog: true,
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 }, uA: { value: 1 } }]),
+      vertexShader: /* glsl */ `
+        uniform float uTime; varying vec3 vP;
+        #include <fog_pars_vertex>
+        void main(){
+          vP = position;
+          vec3 p = position + normal * sin(uTime * 1.3 + position.y * 3.0) * 0.06;
+          vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
+          gl_Position = projectionMatrix * mvPosition;
+          #include <fog_vertex>
+        }`,
+      fragmentShader: /* glsl */ `
+        uniform float uA; varying vec3 vP;
+        #include <fog_pars_fragment>
+        void main(){
+          vec3 q = vP * 7.0 + vec3(sin(vP.y * 3.0), sin(vP.z * 2.0), sin(vP.x * 2.5)) * 0.6;
+          vec3 f = abs(fract(q) - 0.5);
+          float line = 1.0 - smoothstep(0.0, 0.03, min(min(f.x, f.y), f.z));
+          if (line * uA < 0.05) discard;
+          vec3 col = mix(vec3(0.3, 0.33, 0.28), vec3(0.2, 0.28, 0.14), step(0.5, fract(q.x * 0.21 + q.y * 0.13)));
+          gl_FragColor = vec4(col, line * 0.75 * uA);
+          #include <fog_fragment>
+        }`,
+    });
+    this.mesh = new THREE.Mesh(g, this.mat);
+    this.mesh.visible = false;
+    this.mesh.renderOrder = 6;
+    this.mesh.frustumCulled = false;
+    scene.add(this.mesh);
+  }
+}

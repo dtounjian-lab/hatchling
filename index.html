@@ -26,9 +26,9 @@
   <!-- title / species select -->
   <div id="title" class="overlay">
     <div class="title-left">
-      <div class="eyebrow">A life at sea</div>
+      <div class="eyebrow">Casey Key · Nokomis, Florida</div>
       <h1 class="wordmark">Hatchling</h1>
-      <p class="tagline">Hatch under the moon. Grow across a vast ocean. Return to the sand where it all began.</p>
+      <p class="tagline">Hatch under the moon on Casey Key. Grow up out in the Gulf. Return to the sand where it all began.</p>
       <div class="controls-hint">
         <span><b>WASD</b> move</span><span><b>Mouse</b> steer</span><span><b>Shift</b> dash</span><span><b>Space</b> rise</span><span><b>Ctrl / C</b> dive</span>
       </div>
@@ -38,14 +38,19 @@
         <button class="sp-arrow" id="spPrev" aria-label="Previous species">&#8249;</button>
         <div class="sp-names">
           <div class="sp-count" id="spCount">1 / 5</div>
-          <div class="sp-name" id="spName">Green</div>
-          <div class="sp-latin" id="spLatin">Chelonia mydas</div>
+          <div class="sp-name" id="spName">Loggerhead</div>
+          <div class="sp-latin" id="spLatin">Caretta caretta</div>
         </div>
         <button class="sp-arrow" id="spNext" aria-label="Next species">&#8250;</button>
       </div>
       <p class="sp-desc" id="spDesc"></p>
       <div class="sp-stats" id="spStats"></div>
       <div class="sp-diet"><span class="label">Diet</span><div id="spDiet" class="diet-chips"></div></div>
+      <div class="sp-facts">
+        <div><span class="label">Status</span><span id="spStatus" class="status"></span></div>
+        <div class="sp-local" id="spLocal"></div>
+      </div>
+      <label class="sp-namefield"><span class="label">Name her</span><input id="turtleName" maxlength="16" autocomplete="off" spellcheck="false" /></label>
       <button class="begin" id="beginBtn">Begin her life</button>
       <div class="sp-foot">Use &#8592; &#8594; to choose · headphones recommended</div>
     </div>
@@ -54,6 +59,7 @@
   <!-- HUD -->
   <div id="hud" class="hidden">
     <div class="hud-tl">
+      <div class="hud-name" id="hudName"></div>
       <div class="hud-chapter" id="hudChapter"></div>
       <div class="hud-objective" id="hudObjective"></div>
     </div>
@@ -81,6 +87,9 @@
     </div>
     <div class="hud-prompt" id="hudPrompt"></div>
     <div class="hud-hold hidden" id="hudHold"><svg viewBox="0 0 100 100"><circle class="track" cx="50" cy="50" r="40"/><circle class="fill" id="holdArc" cx="50" cy="50" r="40"/></svg></div>
+    <div class="zone-banner" id="zoneBanner"><div class="zb-title" id="zbTitle"></div><div class="zb-sub" id="zbSub"></div></div>
+    <div class="edge-warn l" id="warnL"></div>
+    <div class="edge-warn r" id="warnR"></div>
     <div class="toasts" id="toasts"></div>
     <div class="tips" id="tips"></div>
   </div>
@@ -131,6 +140,7 @@
       <h2 class="results-title" id="resTitle">A life, complete</h2>
       <p class="results-sub" id="resSub"></p>
       <div class="results-grid" id="resGrid"></div>
+      <p class="results-lineage" id="resLineage"></p>
       <p class="results-fact">Only about one hatchling in a thousand survives to adulthood. She was one of them.</p>
       <button class="begin" id="againBtn">Live another life</button>
     </div>

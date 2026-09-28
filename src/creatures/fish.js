@@ -6,7 +6,7 @@ import { groundHeight } from '../world/terrain.js';
 import { rand, pick, clamp } from '../core/util.js';
 
 function fishGeo() {
-  const body = new THREE.SphereGeometry(0.5, 14, 8);
+  const body = new THREE.SphereGeometry(0.5, 10, 6);
   body.scale(0.28, 0.55, 1.0);
   const tail = new THREE.BufferGeometry();
   tail.setAttribute('position', new THREE.Float32BufferAttribute([
@@ -25,16 +25,19 @@ function fishGeo() {
   return mergeGeometries([b, tail, dorsal]);
 }
 
+const REEF_FISH = [['#f2d24a', '#e8c23a'], ['#3f7fd8', '#5d9ae8'], ['#e0703c', '#d9573a'], ['#c8c040', '#e8e0a0'], ['#d85a5a', '#e89a8a'], ['#e8e2cc', '#f0d860']];
 const SCHOOLS = [
-  // zone reef
-  ...Array.from({ length: 9 }, (_, i) => ({ z: -110 - i * 34, x: rand(-80, 80), yOff: rand(2, 5), n: 38, r: 4, scale: [0.22, 0.34], colors: pick([['#ffd23c', '#ffe066'], ['#3fa7ff', '#6cc4ff'], ['#ff8a4c', '#ff6f91'], ['#b28dff', '#ffd23c']]), glow: 0 })),
-  // kelp
-  ...Array.from({ length: 5 }, (_, i) => ({ z: -460 - i * 55, x: rand(-100, 100), yOff: rand(5, 10), n: 46, r: 5, scale: [0.35, 0.5], colors: ['#b8c8b0', '#9fb59a', '#d0d8c0'], glow: 0 })),
-  // open ocean: sardine balls + tuna
-  ...Array.from({ length: 3 }, (_, i) => ({ z: -780 - i * 90, x: rand(-60, 60), yAbs: rand(-40, -22), n: 130, r: 9, scale: [0.3, 0.38], colors: ['#c9d8e6', '#aebfd0', '#e6eef5'], glow: 0, ball: true })),
+  // reef: grunts, snapper, chromis, sergeant majors
+  ...Array.from({ length: 16 }, (_, i) => ({ z: -100 - i * 19, x: rand(-90, 90), yOff: rand(1.5, 5), n: 44, r: 4.5, scale: [0.22, 0.36], colors: pick(REEF_FISH), glow: 0 })),
+  // sargassum line: jacks and filefish sheltering under the mats
+  ...Array.from({ length: 7 }, (_, i) => ({ z: -450 - i * 40, x: rand(-110, 110), yAbs: rand(-8, -2.5), n: 44, r: 5, scale: [0.3, 0.46], colors: ['#c9c28a', '#b8b070', '#d8d0a0'], glow: 0 })),
+  // open Gulf: sardine balls, mackerel, a few big tuna
+  ...Array.from({ length: 4 }, (_, i) => ({ z: -770 - i * 70, x: rand(-60, 60), yAbs: rand(-40, -18), n: 150, r: 9, scale: [0.3, 0.38], colors: ['#c9d8e6', '#aebfd0', '#e6eef5'], glow: 0, ball: true })),
   { z: -900, x: 30, yAbs: -30, n: 18, r: 14, scale: [1.3, 1.7], colors: ['#4a5f7a', '#5b7090'], glow: 0, roam: 60 },
-  // deep: lanternfish
-  ...Array.from({ length: 4 }, (_, i) => ({ z: -1100 - i * 60, x: rand(-80, 80), yAbs: rand(-150, -110), n: 36, r: 6, scale: [0.2, 0.28], colors: ['#27304a', '#1f2740'], glow: 1 })),
+  // the escarpment: lanternfish
+  ...Array.from({ length: 5 }, (_, i) => ({ z: -1100 - i * 50, x: rand(-80, 80), yAbs: rand(-150, -110), n: 40, r: 6, scale: [0.2, 0.28], colors: ['#27304a', '#1f2740'], glow: 1 })),
+  // roaming schools that pass through wherever she swims
+  ...Array.from({ length: 4 }, (_, i) => ({ z: -120, x: 0, yOff: 3, n: 60, r: 6, scale: [0.26, 0.4], colors: i % 2 ? ['#d0dae6', '#b8c8d8'] : pick(REEF_FISH), glow: 0, follow: true })),
 ];
 
 export class FishSchools {
@@ -105,6 +108,19 @@ export class FishSchools {
   update(dt, time, camPos, threats) {
     const T = this.tmp;
     for (const sc of this.schools) {
+      if (sc.follow && camPos.y < -1) {
+        // keep these schools near the swimmer: relocate out of sight when they fall behind
+        const hx = sc.home.x - camPos.x, hz = sc.home.z - camPos.z;
+        if (hx * hx + hz * hz > 85 * 85 || this.first) {
+          const a = Math.random() * Math.PI * 2, d = rand(45, 70);
+          const nx = clamp(camPos.x + Math.cos(a) * d, -190, 190), nz = Math.min(-40, camPos.z + Math.sin(a) * d);
+          const g = groundHeight(nx, nz);
+          const ny = clamp(camPos.y + rand(-4, 4), g + sc.r * 0.6 + 1, -2);
+          const shift = new THREE.Vector3(nx, ny, nz).sub(sc.home);
+          sc.home.add(shift); sc.center.add(shift);
+          for (let i = 0; i < sc.n; i++) this.fish[sc.start + i].pos.add(shift);
+        }
+      }
       const dx = sc.home.x - camPos.x, dz = sc.home.z - camPos.z;
       sc.active = this.first || dx * dx + dz * dz < 170 * 170;
       if (!sc.active) continue;

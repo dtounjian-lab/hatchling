@@ -33,7 +33,25 @@ export class UI {
     let chips = g.full.map((t) => this.chip(t));
     if (sp.id === 'green') chips = [...g2.full.map((t) => this.chip(t)), ...g.full.filter((t) => !g2.full.includes(t)).map((t) => this.chip(t, 'part', ' (young)'))];
     $('spDiet').innerHTML = chips.join('');
+    const st = $('spStatus');
+    st.textContent = sp.status;
+    st.className = 'status' + (sp.status.startsWith('Critically') ? ' cr' : sp.status.startsWith('Least') ? ' lc' : '');
+    $('spLocal').textContent = sp.local;
   }
+  setName(n) { $('hudName').textContent = n; }
+  banner(title, sub, ms = 4200) {
+    $('zbTitle').textContent = title;
+    $('zbSub').textContent = sub || '';
+    const b = $('zoneBanner');
+    b.classList.add('show');
+    clearTimeout(this.bannerTO);
+    this.bannerTO = setTimeout(() => b.classList.remove('show'), ms);
+  }
+  warn(side) {
+    $('warnL').style.opacity = side < 0 ? 1 : 0;
+    $('warnR').style.opacity = side > 0 ? 1 : 0;
+  }
+  lineage(text) { $('resLineage').textContent = text; }
   chip(t, cls = '', suffix = '') {
     return `<span class="chip ${cls}">${FOOD_ICONS[t]}${FOODS[t].name}${suffix}</span>`;
   }
@@ -48,7 +66,7 @@ export class UI {
     setTimeout(() => { o.textContent = text; o.style.opacity = 1; }, 250);
   }
   setZone(text) { const z = $('hudZone'); if (z.textContent !== text) z.textContent = text; }
-  setShells(n, total) { const s = $('hudShells'); const t = total ? `Shells ${n} / ${total}` : ''; if (s.textContent !== t) s.textContent = t; }
+  setShells(t) { const s = $('hudShells'); if (s.textContent !== t) s.textContent = t; }
   meters(health, air, dash, showHealth, showAir, showDash) {
     const set = (id, v, show) => {
       const m = $(id);

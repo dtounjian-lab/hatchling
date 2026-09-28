@@ -10,6 +10,8 @@ export const U = {
   uRimColor: { value: new THREE.Color(0.2, 0.3, 0.45) },
   uUnderColor: { value: new THREE.Color(0.05, 0.3, 0.35) },
   uCamUnder: { value: 0 },
+  uWarm: { value: 0 }, // sunrise / sunset glow, 0..1
+  uSkySun: { value: new THREE.Vector3(0.25, 1.0, 0.55).normalize() },
 };
 
 export const GLSL_NOISE = /* glsl */ `

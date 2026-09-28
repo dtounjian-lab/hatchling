@@ -30,17 +30,38 @@ const ANIMAL = ['crab', 'shrimp', 'conch', 'jelly'];
 
 export const SPECIES = [
   {
+    id: 'loggerhead',
+    name: 'Loggerhead',
+    latin: 'Caretta caretta',
+    desc: "The biggest head and a crushing bite. She cracks open crabs and conch that other turtles can't touch.",
+    status: 'Vulnerable',
+    local: 'The most common nester on Casey Key. Thousands of nests on Sarasota County beaches every summer.',
+    colors: {
+      shellA: '#7c3d1c', shellB: '#c47a3a', plastron: '#f2d6a0', skinA: '#6e3f20', skinB: '#e8bc7a',
+    },
+    pattern: 1, skinPattern: 0, shellType: 'dome', headType: 'normal',
+    stats: { speed: 1.0, agility: 0.95, size: 1.08, dive: 1.1, health: 1.25, accel: 1.0 },
+    pips: { Speed: 3, Agility: 2, Size: 4, Diving: 3 },
+    shape: { head: 1.34, headW: 1.14, flipper: 0.95, shellW: 1.02, shellL: 1.0, shellH: 1.0, snout: 0.0 },
+    gaitSync: false,
+    diet(type) {
+      return { crab: 1, shrimp: 1, conch: 1, jelly: 0.3, sponge: 0.2, squirt: 0.3 }[type] ?? 0.1;
+    },
+  },
+  {
     id: 'green',
-    name: 'Green',
+    name: 'Green turtle',
     latin: 'Chelonia mydas',
-    desc: 'Balanced and steady. An omnivore as a hatchling, she turns to seagrass and algae as she grows.',
+    desc: 'Balanced and steady. She eats anything as a hatchling, then grazes seagrass meadows as she grows. Her green fat comes from her diet.',
+    status: 'Least Concern, recovering',
+    local: 'Nests on Casey Key in growing numbers.',
     colors: {
       shellA: '#4f5b2a', shellB: '#caa453', plastron: '#efe3b6', skinA: '#3b4526', skinB: '#e0d59a',
     },
-    pattern: 0, skinPattern: 0,
-    stats: { speed: 1.0, agility: 1.0, size: 1.0, dive: 1.0, health: 1.0 },
+    pattern: 0, skinPattern: 0, shellType: 'dome', headType: 'normal',
+    stats: { speed: 1.0, agility: 1.0, size: 1.0, dive: 1.0, health: 1.0, accel: 1.0 },
     pips: { Speed: 3, Agility: 3, Size: 3, Diving: 3 },
-    shape: { head: 0.95, flipper: 1.0, shellW: 1.0, shellL: 1.0, snout: 0.0 },
+    shape: { head: 0.95, flipper: 1.0, shellW: 1.0, shellL: 1.0, shellH: 1.0, snout: 0.0 },
     gaitSync: true,
     diet(type, growth) {
       if (type === 'seagrass' || type === 'algae') return 1;
@@ -49,34 +70,19 @@ export const SPECIES = [
     },
   },
   {
-    id: 'loggerhead',
-    name: 'Loggerhead',
-    latin: 'Caretta caretta',
-    desc: 'A great head and a crushing bite. She cracks crabs, shrimp and conch that other turtles cannot.',
-    colors: {
-      shellA: '#7c3d1c', shellB: '#c47a3a', plastron: '#f2d6a0', skinA: '#6e3f20', skinB: '#e8bc7a',
-    },
-    pattern: 1, skinPattern: 0,
-    stats: { speed: 0.95, agility: 0.95, size: 1.08, dive: 1.1, health: 1.25 },
-    pips: { Speed: 3, Agility: 2, Size: 4, Diving: 3 },
-    shape: { head: 1.28, flipper: 0.95, shellW: 1.02, shellL: 1.0, snout: 0.0 },
-    gaitSync: false,
-    diet(type) {
-      return { crab: 1, shrimp: 1, conch: 1, jelly: 0.3, sponge: 0.2, squirt: 0.3 }[type] ?? 0.1;
-    },
-  },
-  {
     id: 'leatherback',
     name: 'Leatherback',
     latin: 'Dermochelys coriacea',
-    desc: 'The giant. The deepest diver of all, but slow to turn. She lives on jellyfish alone.',
+    desc: 'The giant of the sea. She dives past 1,000 meters and crosses whole oceans chasing jellyfish. Built for distance, not tight turns.',
+    status: 'Vulnerable',
+    local: "A rare visitor to Florida's Gulf coast.",
     colors: {
       shellA: '#18202c', shellB: '#c9d4de', plastron: '#d9d6d0', skinA: '#1c2433', skinB: '#d3dbe4',
     },
-    pattern: 2, skinPattern: 1,
-    stats: { speed: 1.08, agility: 0.72, size: 1.45, dive: 1.6, health: 1.2 },
-    pips: { Speed: 4, Agility: 1, Size: 5, Diving: 5 },
-    shape: { head: 1.05, flipper: 1.4, shellW: 0.94, shellL: 1.14, snout: 0.0 },
+    pattern: 2, skinPattern: 1, shellType: 'ridged', headType: 'normal',
+    stats: { speed: 1.22, agility: 0.72, size: 1.45, dive: 1.6, health: 1.2, accel: 0.9 },
+    pips: { Speed: 5, Agility: 1, Size: 5, Diving: 5 },
+    shape: { head: 1.05, flipper: 1.4, shellW: 0.94, shellL: 1.12, shellH: 1.05, snout: 0.0 },
     gaitSync: true,
     diet(type) {
       if (type === 'jelly') return 1;
@@ -88,14 +94,16 @@ export const SPECIES = [
     id: 'hawksbill',
     name: 'Hawksbill',
     latin: 'Eretmochelys imbricata',
-    desc: 'The most agile, with a shell like polished tortoiseshell. She picks sponges and reef invertebrates from the coral.',
+    desc: "The reef's most agile swimmer. Her narrow beak reaches into coral cracks for sponges no one else will eat.",
+    status: 'Critically Endangered',
+    local: "Almost never seen on Florida's Gulf coast.",
     colors: {
       shellA: '#3b1d0c', shellB: '#df922e', plastron: '#f0d89e', skinA: '#4a2d16', skinB: '#ecc37c',
     },
-    pattern: 3, skinPattern: 0,
-    stats: { speed: 1.0, agility: 1.38, size: 0.9, dive: 0.95, health: 0.95 },
+    pattern: 3, skinPattern: 0, shellType: 'serrated', headType: 'hooked',
+    stats: { speed: 1.0, agility: 1.38, size: 0.9, dive: 0.95, health: 0.95, accel: 1.1 },
     pips: { Speed: 3, Agility: 5, Size: 2, Diving: 2 },
-    shape: { head: 0.95, flipper: 1.02, shellW: 0.96, shellL: 1.02, snout: 0.35 },
+    shape: { head: 0.95, flipper: 1.02, shellW: 0.96, shellL: 1.04, shellH: 1.05, snout: 0.45 },
     gaitSync: false,
     diet(type) {
       return { sponge: 1, squirt: 1, algae: 0.3 }[type] ?? 0.1;
@@ -103,16 +111,18 @@ export const SPECIES = [
   },
   {
     id: 'kemps',
-    name: "Kemp's ridley",
+    name: "Kemp's Ridley",
     latin: 'Lepidochelys kempii',
-    desc: 'The smallest and the fastest. A quick hunter of crabs and little crustaceans.',
+    desc: 'The smallest and quickest to react. A sharp hunter of crabs, and the rarest sea turtle in the world.',
+    status: 'Critically Endangered',
+    local: 'A rare nester on these beaches.',
     colors: {
       shellA: '#646a5c', shellB: '#a3a88f', plastron: '#f1eee0', skinA: '#676d5f', skinB: '#cdd1bd',
     },
-    pattern: 4, skinPattern: 0,
-    stats: { speed: 1.2, agility: 1.15, size: 0.78, dive: 0.9, health: 0.9 },
-    pips: { Speed: 5, Agility: 4, Size: 1, Diving: 2 },
-    shape: { head: 1.08, flipper: 0.95, shellW: 1.1, shellL: 0.94, snout: 0.0 },
+    pattern: 4, skinPattern: 0, shellType: 'round', headType: 'normal',
+    stats: { speed: 1.05, agility: 1.25, size: 0.78, dive: 0.9, health: 0.9, accel: 1.35 },
+    pips: { Speed: 3, Agility: 4, Size: 1, Diving: 2 },
+    shape: { head: 1.08, flipper: 0.95, shellW: 1.14, shellL: 0.92, shellH: 0.78, snout: 0.0 },
     gaitSync: false,
     diet(type) {
       return { crab: 1, shrimp: 1, conch: 0.4 }[type] ?? 0.1;

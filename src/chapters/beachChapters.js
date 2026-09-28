@@ -9,8 +9,26 @@ const NEST = WORLD.nest;
 const nestY = () => groundHeight(NEST.x, NEST.z);
 
 // ============================================================== I Hatching
+function eggPiece(r, top) {
+  // a jagged half shell: the cap flies off, the cup stays in the sand
+  const g = top
+    ? new THREE.SphereGeometry(r, 22, 10, 0, TAU, 0, Math.PI * 0.46)
+    : new THREE.SphereGeometry(r, 22, 12, 0, TAU, Math.PI * 0.46, Math.PI * 0.54);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const edge = Math.abs(y - Math.cos(Math.PI * 0.46) * r) < r * 0.02;
+    if (edge) p.setY(i, y + Math.sin(Math.atan2(z, x) * 9) * r * 0.12);
+    p.setY(i, p.getY(i) * 1.08);
+  }
+  g.computeVertexNormals();
+  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0xcdbfa3, roughness: 0.8, side: THREE.DoubleSide }));
+  m.frustumCulled = false;
+  return m;
+}
+
 export class Hatching extends Chapter {
-  static meta = { num: 'Chapter I', title: 'Hatching', sub: 'Under a full moon, the sand begins to stir.', mood: 'night' };
+  static meta = { num: 'Chapter I', title: 'Hatching', sub: 'Under a full moon on Casey Key, the sand begins to stir.', mood: 'night' };
 
   enter() {
     const G = this.game;
@@ -29,34 +47,60 @@ export class Hatching extends Chapter {
     this.sibEggs = [];
     for (let i = 0; i < 12; i++) {
       const a = (i / 12) * TAU * 1.9 + rand(-0.2, 0.2);
-      const r = 0.18 + (i / 12) * 0.55;
+      const r = 0.2 + (i / 12) * 0.55;
       const p = new THREE.Vector3(c.x + Math.cos(a) * r, 0, c.z + 0.1 + Math.sin(a) * r);
-      p.y = groundHeight(p.x, p.z) + 0.08 + (i < 3 ? 0.1 : 0);
+      p.y = groundHeight(p.x, p.z) + 0.1 + (i < 3 ? 0.1 : 0);
       this.sibEggs.push(G.eggs.add(p, 0.15));
     }
     const ep = new THREE.Vector3(c.x, 0, c.z - 0.42);
-    ep.y = groundHeight(ep.x, ep.z) + 0.13;
+    ep.y = groundHeight(ep.x, ep.z) + 0.15;
     this.egg = G.eggs.add(ep, 0.17);
     this.eggPos = ep.clone();
+    this.cap = eggPiece(0.17, true);
+    this.cup = eggPiece(0.17, false);
+    this.cap.visible = this.cup.visible = false;
+    G.scene.add(this.cap, this.cup);
     P.placeAt(ep.clone(), Math.PI, 'locked');
     G.eggs.sync(0);
-    // opening shot: the moon over the sea, then down to the nest
+    // opening shot: the moon over the Gulf, then down to the nest
     G.rig.override = { pos: new THREE.Vector3(4, 9, 34), look: new THREE.Vector3(0, 8, -60), fov: 55, follow: 1.2, lambda: 50 };
     G.rig.blend = 1;
     G.rig.pos.copy(G.rig.override.pos); G.rig.look.copy(G.rig.override.look);
     this.stage = 'intro';
     this.taps = 0;
     this.digTaps = 0;
+    this.pop = 0;
     G.audio.intensity = 0.3;
     (async () => {
       G.showCard(Hatching.meta);
       await G.sleep(3.6);
-      G.rig.override = { pos: new THREE.Vector3(ep.x + 0.7, ep.y + 0.85, ep.z - 1.25), look: ep.clone().add(new THREE.Vector3(0, 0.02, 0.2)), fov: 50, follow: 0.9, lambda: 3 };
+      G.rig.override = { pos: new THREE.Vector3(ep.x + 0.7, ep.y + 0.8, ep.z - 1.2), look: ep.clone().add(new THREE.Vector3(0, 0.02, 0.15)), fov: 48, follow: 0.9, lambda: 3 };
       await G.sleep(3.2);
       this.stage = 'crack';
-      G.ui.setObjective('Break free of your shell');
+      G.ui.setObjective(`Break free of your shell, ${G.turtleName || 'little one'}`);
       G.ui.prompt('Tap Space');
     })();
+  }
+
+  breakEgg() {
+    const G = this.game, P = G.player;
+    this.stage = 'emerge';
+    this.egg.on = false;
+    const e = this.eggPos;
+    this.cup.visible = true;
+    this.cup.position.copy(e);
+    this.cap.visible = true;
+    this.cap.position.copy(e);
+    this.capVel = new THREE.Vector3(rand(-0.4, 0.4), 1.6, rand(0.3, 0.7));
+    this.capSpin = new THREE.Vector3(rand(-6, 6), rand(-3, 3), rand(-6, 6));
+    G.particles.splash.burst(e.clone().add(new THREE.Vector3(0, 0.12, 0)), 14, 0.9, 0.6, 0.035, new THREE.Color(0.95, 0.93, 0.85), 0.8);
+    P.visible = true;
+    P.placeAt(e.clone(), Math.PI, 'locked');
+    this.pop = 0;
+    G.audio.crack();
+    G.audio.chirp();
+    G.ui.prompt('');
+    G.ui.setObjective('Dig your way out of the nest');
   }
 
   update(dt) {
@@ -64,70 +108,82 @@ export class Hatching extends Chapter {
     const G = this.game, P = G.player, I = G.input;
     G.eggs.sync(G.time);
     for (const e of G.eggs.list) e.wob = Math.max(0, e.wob - dt * 3);
-    if (this.stage === 'crack') {
-      if (I.action) {
-        this.taps++;
-        this.egg.crack = Math.min(1, this.taps / 5);
-        this.egg.wob = 1;
-        G.audio.crack();
-        if (this.taps % 2) G.audio.chirp();
-        G.particles.sand.burst(this.eggPos, 4, 0.8, 0.5, 0.03);
-        if (this.taps >= 5) {
-          this.stage = 'emerge';
-          this.egg.on = false;
-          G.particles.splash.burst(this.eggPos, 22, 1.4, 0.7, 0.05, new THREE.Color(0.95, 0.93, 0.85), 1);
-          P.visible = true;
-          P.placeAt(this.eggPos.clone(), Math.PI, 'locked');
-          this.pop = 0;
-          G.audio.chirp();
-          G.ui.prompt('');
-          G.ui.setObjective('Dig your way out of the nest');
-          setTimeout(() => { if (this.stage === 'emerge') { this.stage = 'dig'; G.ui.prompt('Tap Space to dig'); } }, 1200);
-        }
-      }
+    if (this.stage === 'crack' && I.action) {
+      this.taps++;
+      this.egg.crack = Math.min(1, this.taps / 5);
+      this.egg.wob = 1;
+      G.audio.crack();
+      if (this.taps % 2) G.audio.chirp();
+      G.particles.sand.burst(this.eggPos, 4, 0.8, 0.5, 0.03);
+      if (this.taps >= 5) this.breakEgg();
+    }
+    // the cap tumbles away and settles on the sand
+    if (this.cap && this.cap.visible && this.capVel) {
+      this.capVel.y -= 6 * dt;
+      this.cap.position.addScaledVector(this.capVel, dt);
+      this.cap.rotation.x += this.capSpin.x * dt; this.cap.rotation.z += this.capSpin.z * dt;
+      const gy = groundHeight(this.cap.position.x, this.cap.position.z) + 0.03;
+      if (this.cap.position.y < gy) { this.cap.position.y = gy; this.capVel.set(0, 0, 0); this.capSpin.multiplyScalar(0); this.cap.rotation.x = Math.PI; }
     }
     if (this.stage === 'emerge' || this.stage === 'dig' || this.stage === 'out') {
       this.pop += dt;
-      // little look around
-      P.stroke += dt * 0.8;
-      P.amp = 0.6;
-      P.aimYaw = Math.PI + Math.sin(this.pop * 1.3) * 0.5;
-      P.aimPitch = 0.2 + Math.sin(this.pop * 0.9) * 0.15;
+      const e = this.eggPos;
+      const out = Math.min(1, this.pop / 1.4);
+      const wr = this.stage === 'emerge' ? 1 : 0.5;
+      // wriggle up out of the cup, head first, then flop forward onto the sand
+      P.stroke += dt * (this.stage === 'emerge' ? 2.4 : 1.1);
+      P.amp = 0.6 + 0.4 * wr;
+      P.aimYaw = Math.PI + Math.sin(this.pop * 0.9) * 0.25;
+      P.aimPitch = 0.1 + Math.sin(this.pop * 0.7) * 0.08;
       P.mode = 'locked';
-      const target = this.eggPos.clone().lerp(new THREE.Vector3(NEST.x, 0, NEST.z - 1.7), this.digTaps / 4);
-      target.y = groundHeight(target.x, target.z) + P.size * 0.1 + (this.stage === 'emerge' ? Math.sin(Math.min(1, this.pop * 2) * Math.PI) * 0.12 : 0);
-      P.pos.lerp(target, 1 - Math.exp(-5 * dt));
-      P.yaw = Math.PI;
-      P.pitch = 0.25 * (1 - this.digTaps / 4);
-      G.rig.override.look.lerp(P.pos, 1 - Math.exp(-3 * dt));
+      P.yaw = Math.PI + Math.sin(this.pop * 7) * 0.12 * (1 - out);
+      const rim = new THREE.Vector3(NEST.x, 0, NEST.z - 1.9);
+      const start = e.clone().add(new THREE.Vector3(0, 0.02, -0.12 * out));
+      const target = start.clone().lerp(rim, this.digTaps / 4);
+      const gy = groundHeight(target.x, target.z) + P.size * 0.1;
+      target.y = this.digTaps === 0 ? lerp(e.y - 0.02, gy, out) + Math.sin(out * Math.PI) * 0.05 : gy;
+      P.pos.lerp(target, 1 - Math.exp(-6 * dt));
+      P.pitch = this.digTaps === 0 ? lerp(0.9, 0.12, out) : 0.18 * (1 - this.digTaps / 4);
+      P.roll = Math.sin(this.pop * 8) * 0.08 * (1 - out * 0.7);
+      P.displayScale = this.digTaps === 0 ? lerp(0.72, 1, out) : 1;
+      G.rig.override.look.lerp(P.pos.clone().add(new THREE.Vector3(0, 0.05, 0)), 1 - Math.exp(-3 * dt));
+      if (this.stage === 'emerge' && out >= 1) { this.stage = 'dig'; G.ui.prompt('Tap Space to dig'); }
     }
     if (this.stage === 'dig' && I.action) {
       this.digTaps++;
       G.audio.dig();
       G.particles.sand.burst(P.pos.clone().add(new THREE.Vector3(0, 0.05, 0.1)), 14, 1.6, 0.8, 0.05, null, 1.2);
       P.stroke += 0.5;
+      G.tracks.step(P.pos, P.yaw, P.size, 60, 0.7);
       // siblings begin to hatch around you
       const n = Math.floor((this.digTaps / 4) * this.sibEggs.length);
-      for (let i = 0; i < n; i++) {
-        const e = this.sibEggs[i];
-        if (e.on && !e.hatched) {
-          e.crack = 1; e.wob = 1; e.hatched = true;
-          setTimeout(() => {
-            e.on = false;
-            const a = spawnSibling(G.crowd, G.species, e.pos.clone(), rand(0.3, 2.2));
-            if (a) a.pos.y = groundHeight(a.pos.x, a.pos.z);
-            G.particles.splash.burst(e.pos, 8, 1, 0.5, 0.04, new THREE.Color(0.95, 0.93, 0.85), 0.8);
-          }, rand(200, 900));
-        }
-      }
+      for (let i = 0; i < n; i++) this.hatchSibling(this.sibEggs[i], rand(200, 900));
       if (this.digTaps >= 4) {
         this.stage = 'out';
         G.ui.prompt('');
-        for (const e of this.sibEggs) if (e.on && !e.hatched) { e.crack = 1; e.hatched = true; const ee = e; setTimeout(() => { ee.on = false; spawnSibling(G.crowd, G.species, ee.pos.clone(), rand(0.2, 1.5)); }, rand(300, 1200)); }
+        for (const e of this.sibEggs) this.hatchSibling(e, rand(300, 1200));
         setTimeout(() => G.goto(1), 1600);
       }
     }
     for (const a of G.crowd.agents) if (a.active) updateRunner(a, dt, G.time, G.obstacles);
+  }
+
+  hatchSibling(e, delay) {
+    if (!e.on || e.hatched) return;
+    const G = this.game;
+    e.crack = 1; e.wob = 1; e.hatched = true;
+    setTimeout(() => {
+      e.on = false;
+      const a = spawnSibling(G.crowd, G.species, e.pos.clone(), rand(0.3, 2.2));
+      if (a) a.pos.y = groundHeight(a.pos.x, a.pos.z);
+      G.particles.splash.burst(e.pos, 8, 1, 0.5, 0.04, new THREE.Color(0.95, 0.93, 0.85), 0.8);
+    }, delay);
+  }
+
+  exit() {
+    const G = this.game;
+    G.player.displayScale = 1;
+    setTimeout(() => { G.scene.remove(this.cap, this.cup); }, 20000);
   }
 }
 
@@ -152,13 +208,18 @@ export class Run extends Chapter {
     G.eggs.clear();
     G.beachLife.setVisible(true);
     G.beachLife.reset();
+    G.sys.shells = 'land';
     this.checkpoint = new THREE.Vector3(NEST.x, 0, NEST.z - 2);
     if (G.crowd.activeCount < 4) {
       for (let i = 0; i < 14; i++) spawnSibling(G.crowd, G.species, new THREE.Vector3(NEST.x + rand(-1.5, 1.5), 0, NEST.z + rand(-2, 1)), rand(0, 1.5));
     }
+    setTimeout(() => { G.stats.siblingsTotal = Math.max(G.stats.siblingsTotal || 0, G.crowd.activeCount); }, 2500);
     G.hud({ meters: 'stamina', growth: false, diet: false });
-    G.ui.setObjective('Reach the sea. Head for the moonlit surf.');
-    G.ui.tips('<b>W A S D</b> crawl<br><b>Mouse</b> look around<br><b>Shift</b> scramble<br>Watch for shadows on the sand');
+    G.ui.setObjective('Reach the Gulf. Head for the moonlit surf.');
+    G.ui.tips('<b>W A S D</b> crawl<br><b>Mouse</b> look around<br><b>Shift</b> scramble<br>Watch for shadows on the sand<br>Follow the moon, not the porch lights');
+    for (const l of G.beach.lures) G.beach.setLure(l, true);
+    this.lureWarned = false;
+    this.lightsOff = 0;
     G.showCard(Run.meta);
     this.caughtLock = false;
     this.ready = false;
@@ -195,12 +256,37 @@ export class Run extends Chapter {
       onGullCry: (p) => G.audio.gull(clamp(1.2 - p.distanceTo(P.pos) / 40, 0.2, 1)),
       onCrab: () => G.audio.crab(),
     }, P);
+    // porch lights on Casey Key pull hatchlings inland, until neighbors switch them off
+    if (this.ready) {
+      const offAt = [24, 46];
+      if (this.lightsOff < 2 && this.t > offAt[this.lightsOff]) {
+        const l = G.beach.lures.find((x) => x.on);
+        if (l) { G.beach.setLure(l, false); G.ui.toast('A neighbor switched off a porch light. Thank you.', 'good'); }
+        this.lightsOff++;
+      }
+      for (const l of G.beach.lures) {
+        if (!l.on) continue;
+        const dx = l.pos.x - P.pos.x, dz = l.pos.z - P.pos.z;
+        const d = Math.hypot(dx, dz);
+        if (P.pos.z > 14 && d < 70) {
+          const k = (1 - d / 70) * 0.9;
+          P.landDrift.x += (dx / d) * k; P.landDrift.z += (dz / d) * k;
+          if (!this.lureWarned && k > 0.25) { this.lureWarned = true; G.ui.toast('Porch lights pull you inland. Turn toward the moon.', 'meh'); }
+        }
+        for (const a of G.crowd.agents) {
+          if (!a.active || a.state !== 'run' || a.pos.z < 16) continue;
+          if (Math.abs(a.pos.x - l.pos.x) < 22 && Math.random() < dt * 0.05) {
+            a.state = 'lured'; a.data.lure = l.pos; G.stats.siblingsLost++;
+          }
+        }
+      }
+    }
     for (const [i, cz] of [[1, 40], [2, 22]]) {
       if (P.pos.z < cz && this.checkpoint.z > cz + 1) { this.checkpoint.set(P.pos.x, 0, cz + 1); G.ui.toast('Keep going', 'meh'); }
     }
     // the sea draws her in
     if (P.pos.z < 0.6 && !this.caughtLock) {
-      G.stats.siblingsSaved = G.crowd.agents.filter((a) => a.active && a.state !== 'taken').length;
+      G.stats.siblingsSaved = G.crowd.agents.filter((a) => a.data.reached || (a.active && a.state === 'run')).length;
       G.goto(2);
     }
   }
@@ -238,12 +324,12 @@ export class Run extends Chapter {
 
 // ============================================================== VIII Nesting
 export class Nesting extends Chapter {
-  static meta = { num: 'Chapter VIII', title: 'Nesting', sub: 'Back to the sand where it all began.', mood: 'nest' };
+  static meta = { num: 'Chapter VIII', title: 'Nesting', sub: 'Back to the sand of Casey Key, where it all began.', mood: 'nest' };
 
   enter() {
     const G = this.game, P = G.player;
     G.setDay(0);
-    G.sys.food = false; G.sys.shells = false; G.sys.sharks = false; G.sys.currents = false;
+    G.sys.food = false; G.sys.shells = 'land'; G.sys.sharks = false; G.sys.currents = false;
     G.boats.setVisible(false); G.nets.setVisible(false);
     G.crowd.clear();
     G.eggs.clear();

@@ -5,14 +5,49 @@ import { std } from '../core/shared.js';
 import { lerp, TAU } from '../core/util.js';
 
 // ---------------------------------------------------------------- geometry
-function shellGeo() {
-  const g = new THREE.SphereGeometry(1, 48, 28);
+function shellGeo(variant = 'dome') {
+  if (variant === 'ridged') {
+    // leatherback: seven longitudinal ridges and a long tapered rear point
+    const g = new THREE.SphereGeometry(1, 72, 40);
+    g.rotateX(Math.PI / 2); // poles front and back so ridges follow longitude lines
+    const p = g.attributes.position;
+    const R = [0, 0.36, -0.36, 0.74, -0.74, 1.12, -1.12];
+    for (let i = 0; i < p.count; i++) {
+      let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+      if (y > -0.05) {
+        const th = Math.atan2(x, y);
+        let b = 0;
+        for (const r of R) b = Math.max(b, Math.exp(-Math.pow((th - r) / 0.075, 2)));
+        const k = 1 + 0.11 * b * (1 - z * z * 0.7);
+        x *= k; y *= k;
+      }
+      if (y < 0) y *= 0.42;
+      if (z < 0) { x *= 1 - 0.42 * Math.pow(-z, 1.4); y *= 1 - 0.3 * z * z; z *= 1.14; }
+      y *= 1 + 0.08 * Math.cos(z * 1.4);
+      p.setXYZ(i, x, y, z);
+    }
+    g.computeVertexNormals();
+    return g;
+  }
+  const g = new THREE.SphereGeometry(1, 64, 32);
   const p = g.attributes.position;
   for (let i = 0; i < p.count; i++) {
-    let x = p.getX(i), y = p.getY(i);
-    const z = p.getZ(i);
+    let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const rim = Math.exp(-Math.pow(y / 0.14, 2));
     if (y < 0) y *= 0.42;
-    if (z < 0) x *= 1 - 0.24 * Math.pow(-z, 1.6);
+    const taper = variant === 'round' ? 0.08 : variant === 'serrated' ? 0.3 : 0.24;
+    if (z < 0) x *= 1 - taper * Math.pow(-z, 1.6);
+    if (variant === 'serrated') {
+      // hawksbill: saw-toothed rear margin
+      const ang = Math.atan2(z, x);
+      const saw = (ang * 13) / (Math.PI * 2) - Math.floor((ang * 13) / (Math.PI * 2));
+      const back = Math.min(1, Math.max(0, (-z + 0.1) / 0.6));
+      const d = 0.07 * saw * rim * back;
+      const l = Math.hypot(x, z) || 1;
+      x += (x / l) * d; z += (z / l) * d;
+      y *= 1.08;
+    }
+    if (variant === 'round') x *= 1.03;
     y *= 1 + 0.08 * Math.cos(z * 1.4);
     p.setXYZ(i, x, y, z);
   }
@@ -20,14 +55,20 @@ function shellGeo() {
   return g;
 }
 
-function headGeo() {
-  const g = new THREE.SphereGeometry(1, 28, 20);
+function headGeo(variant = 'normal') {
+  const g = new THREE.SphereGeometry(1, 32, 24);
   const p = g.attributes.position;
   for (let i = 0; i < p.count; i++) {
-    let x = p.getX(i), y = p.getY(i);
-    const z = p.getZ(i);
+    let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
     if (z > 0) { const k = 1 - 0.28 * z * z; x *= k; y *= 1 - 0.18 * z * z; }
     if (y < 0) y *= 0.8;
+    if (variant === 'hooked') {
+      // hawksbill: narrow, pointed beak whose upper jaw hooks down
+      const t = Math.max(0, z - 0.3);
+      x *= 1 - t * 0.55;
+      z *= 1 + Math.max(0, z) * 0.22;
+      if (y > -0.35) y -= t * t * 1.25;
+    }
     p.setXYZ(i, x, y, z);
   }
   g.computeVertexNormals();
@@ -65,8 +106,8 @@ let GEO = null;
 export function turtleGeos() {
   if (GEO) return GEO;
   GEO = {
-    shell: shellGeo(),
-    head: headGeo(),
+    shells: { dome: shellGeo('dome'), ridged: shellGeo('ridged'), serrated: shellGeo('serrated'), round: shellGeo('round') },
+    heads: { normal: headGeo('normal'), hooked: headGeo('hooked') },
     eye: new THREE.SphereGeometry(1, 16, 12),
     ffR: flipperGeo(0.3, 0.07, 0.34, 1),
     ffL: flipperGeo(0.3, 0.07, 0.34, -1),
@@ -74,6 +115,8 @@ export function turtleGeos() {
     rfL: flipperGeo(0.5, 0.1, 0.12, -1),
     tail: tailGeo(),
   };
+  GEO.shell = GEO.shells.dome;
+  GEO.head = GEO.heads.normal;
   return GEO;
 }
 
@@ -92,12 +135,12 @@ vec3 shellPattern(vec3 p, vec3 A, vec3 B, vec3 C, float pat){
   vec2 q = vec2(p.x, p.z);
   if (pat > 1.5 && pat < 2.5) {
     float ridge = 0.0;
+    float th = atan(p.x, max(p.y, 0.001));
     for (int k = -3; k <= 3; k++) {
-      float xr = float(k) * 0.27 * (1.0 - 0.25 * q.y * q.y);
-      ridge = max(ridge, 1.0 - smoothstep(0.012, 0.05, abs(q.x - xr)));
+      ridge = max(ridge, 1.0 - smoothstep(0.02, 0.07, abs(th - float(k) * 0.37)));
     }
-    float sp = step(0.8, vnoise(q * 16.0)) * (0.6 + 0.4 * vnoise(q * 40.0));
-    vec3 col = mix(A, B, sp * 0.75);
+    float sp = step(0.8, vnoise(q * 30.0)) * (0.5 + 0.5 * vnoise(q * 70.0));
+    vec3 col = mix(A, B, sp * 0.55);
     col = mix(col, A * 2.2 + 0.035, ridge * 0.55);
     return col;
   }
@@ -128,6 +171,9 @@ vec3 shellPattern(vec3 p, vec3 A, vec3 B, vec3 C, float pat){
     float flame = smoothstep(0.3, 0.8, 0.5 + 0.5 * sin(ang * 5.0 + n * 6.0 + length(d) * 9.0));
     col = mix(B, A, flame);
     col = mix(col, vec3(0.05, 0.025, 0.01), smoothstep(0.62, 0.85, vnoise(q * 6.0 + 2.0)) * 0.75);
+    // imbricate (overlapping) scutes: each plate is lit at its front lip and shadowed where it tucks under the next
+    float lip = (q - s1).y;
+    col *= 0.72 + 0.5 * smoothstep(-0.22, 0.14, lip);
   } else {
     col = mix(A, B, 0.22 * n + 0.12 * streak);
   }
@@ -225,8 +271,8 @@ export function computeRig(m, shape) {
   const headR = 0.105 * hs;
   const eyeR = 0.03 * es * Math.sqrt(shape.head);
   const r = {
-    shell: { p: [0, 0.04, 0], s: [0.4 * sw, lerp(0.25, 0.19, m), 0.5 * sl] },
-    head: { p: [0, 0.03 + 0.03 * (hs - 1), 0.5 * sl + headR * 0.85], s: [headR * 0.95, headR * 0.86, headR * (1.22 + shape.snout)] },
+    shell: { p: [0, 0.04, 0], s: [0.4 * sw, lerp(0.25, 0.19, m) * (shape.shellH ?? 1), 0.5 * sl] },
+    head: { p: [0, 0.03 + 0.03 * (hs - 1), 0.5 * sl + headR * 0.85], s: [headR * 0.95 * (shape.headW ?? 1), headR * 0.86, headR * (1.22 + shape.snout)] },
     eye: { p: [headR * 0.6, headR * 0.34, headR * 0.5], r: eyeR },
     hi: { p: [headR * 0.6 + eyeR * 0.3, headR * 0.34 + eyeR * 0.45, headR * 0.5 + eyeR * 0.6], r: eyeR * 0.36 },
     ff: { p: [0.31 * sw, -0.005, 0.25 * sl], s: 0.52 * fl },
@@ -317,6 +363,9 @@ export class TurtleModel {
 
   setSpecies(sp) {
     this.species = sp;
+    const G = turtleGeos();
+    this.shell.geometry = G.shells[sp.shellType || 'dome'];
+    this.head.geometry = G.heads[sp.headType || 'normal'];
     const c = sp.colors;
     const su = this.mats.shell.userData.uniforms;
     su.uColA.value.set(c.shellA); su.uColB.value.set(c.shellB); su.uColC.value.set(c.plastron);

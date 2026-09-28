@@ -245,21 +245,38 @@ export class Food {
       }
     }
     for (const m of Object.values(this.meshes)) m.instanceColor.needsUpdate = true;
+    // twinkles that mark food in her diet, so it is easy to spot
+    this.glintMax = 72;
+    const gg = new THREE.BufferGeometry();
+    this.glintPos = new Float32Array(this.glintMax * 3).fill(-99999);
+    this.glintSize = new Float32Array(this.glintMax);
+    gg.setAttribute('position', new THREE.BufferAttribute(this.glintPos, 3).setUsage(THREE.DynamicDrawUsage));
+    gg.setAttribute('aSize', new THREE.BufferAttribute(this.glintSize, 1).setUsage(THREE.DynamicDrawUsage));
+    this.glint = new THREE.Points(gg, new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+      uniforms: { uTime: { value: 0 } },
+      vertexShader: 'uniform float uTime; attribute float aSize; varying float vT; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); vT = 0.55 + 0.45 * sin(uTime * 3.2 + position.x * 1.7 + position.z); gl_PointSize = aSize * (110.0 + 60.0 * vT) / max(1.0, -mv.z); gl_Position = projectionMatrix * mv; }',
+      fragmentShader: 'varying float vT; void main(){ vec2 c = gl_PointCoord - 0.5; float s = max(0.0, 1.0 - abs(c.x) * 12.0) * max(0.0, 1.0 - abs(c.y) * 2.4) + max(0.0, 1.0 - abs(c.y) * 12.0) * max(0.0, 1.0 - abs(c.x) * 2.4); s = s * 0.8 + smoothstep(0.3, 0.0, length(c)) * 0.9; gl_FragColor = vec4(vec3(0.75, 1.0, 0.8) * s * vT, s * vT); }',
+    }));
+    this.glint.frustumCulled = false;
+    this.glint.renderOrder = 10;
+    scene.add(this.glint);
     this.enabled = true;
     this.visible = true;
   }
 
   setVisible(v) {
     this.visible = v;
+    this.glint.visible = v;
     for (const m of Object.values(this.meshes)) m.visible = v;
   }
 
   // Returns the item eaten this frame (at most one), or null.
-  update(dt, time, player, canEat) {
+  update(dt, time, player, canEat, diet = []) {
     if (!this.visible) return null;
     let eaten = null;
     const mouth = player.mouth;
-    const reach = player.size * 0.5;
+    const reach = player.size * 0.62;
     const pp = player.pos;
     for (const it of this.items) {
       const mesh = this.meshes[it.type];
@@ -290,6 +307,18 @@ export class Food {
         _m.compose(it.pos, _q, _s.setScalar(it.size));
         mesh.setMatrixAt(it.idx, _m);
       }
+      // a gentle pull: food in her diet drifts into reach when she is close
+      if (canEat && diet.includes(it.type)) {
+        const md = it.pos.distanceTo(mouth);
+        const pull = reach * 2.6 + it.size;
+        if (md < pull && md > 1e-3) {
+          const k = Math.min(1, dt * 3.5 * (1 - md / pull) + dt);
+          _p.copy(mouth).sub(it.pos).multiplyScalar(k);
+          it.home.add(_p); it.pos.add(_p);
+          _m.compose(it.pos, _q, _s.setScalar(it.size));
+          mesh.setMatrixAt(it.idx, _m);
+        }
+      }
       if (!eaten && canEat) {
         const r = reach + it.size * 0.55;
         if (it.pos.distanceToSquared(mouth) < r * r) {
@@ -302,7 +331,66 @@ export class Food {
     }
     this._first = false;
     for (const m of Object.values(this.meshes)) m.instanceMatrix.needsUpdate = true;
+    // glints on the nearest edible items
+    let g = 0;
+    const R2 = 55 * 55;
+    for (const it of this.items) {
+      if (g >= this.glintMax) break;
+      if (!it.alive || !diet.includes(it.type) || it.pos.distanceToSquared(pp) > R2) continue;
+      this.glintPos[g * 3] = it.pos.x; this.glintPos[g * 3 + 1] = it.pos.y + it.size * 0.6; this.glintPos[g * 3 + 2] = it.pos.z;
+      this.glintSize[g] = 0.6 + it.size;
+      g++;
+    }
+    for (let i = g; i < this.glintMax; i++) this.glintPos[i * 3 + 1] = -99999;
+    this.glint.geometry.attributes.position.needsUpdate = true;
+    this.glint.geometry.attributes.aSize.needsUpdate = true;
+    this.glint.material.uniforms.uTime.value = time;
     return eaten;
+  }
+
+  // Keep a handful of edible items near the player so she never runs dry.
+  ensureNear(player, types, zoneId, want = 8) {
+    const Z = ZONE_TABLE[zoneId];
+    if (!Z || !types.length) return;
+    const pp = player.pos;
+    const R2 = 42 * 42;
+    let near = 0, nearPlastic = 0;
+    for (const it of this.items) {
+      if (!it.alive) continue;
+      const d = it.pos.distanceToSquared(pp);
+      if (d < R2) { if (types.includes(it.type)) near++; else if (it.type === 'plastic') nearPlastic++; }
+    }
+    const fwd = player.forward(_p).setY(0).normalize();
+    const place = (it) => {
+      const a = Math.atan2(fwd.x, fwd.z) + rand(-1.9, 1.9);
+      const d = rand(16, 38) * Math.max(1, Z.sizeK * 0.8);
+      const x = Math.max(-190, Math.min(190, pp.x + Math.sin(a) * d));
+      const z = Math.min(Z.z[0], Math.max(Z.z[1], pp.z + Math.cos(a) * d));
+      const g = groundHeight(x, z);
+      const cfg = this.types[it.type];
+      let y;
+      if (zoneId === 'kelp' && ['algae', 'crab', 'shrimp', 'squirt'].includes(it.type)) y = rand(-4, -0.8);
+      else if (zoneId === 'open' && it.type !== 'jelly' && it.type !== 'plastic') y = Math.min(-1.5, Math.max(g + 2, pp.y + rand(-5, 5)));
+      else if (cfg.place === 'floor') y = g;
+      else if (cfg.place === 'low') y = g + rand(0.4, 2.2) * Z.sizeK;
+      else y = Math.min(-1.2, Math.max(g + 2, pp.y + rand(-5, 5)));
+      it.home.set(x, y, z); it.pos.copy(it.home);
+      it.zone = zoneId;
+      it.size = rand(0.28, 0.45) * Z.sizeK * (it.type === 'jelly' ? 1.4 : 1) * (it.type === 'seagrass' ? 1.5 : 1);
+      it.onFloor = cfg.place === 'floor' && y === g;
+      it.float = zoneId === 'kelp' && y > -4.5 && it.type === 'algae';
+      it.alive = true; it.respawn = 0;
+    };
+    const far = (it) => !it.alive || it.pos.distanceToSquared(pp) > 130 * 130;
+    let need = want - near;
+    for (const it of this.items) {
+      if (need <= 0) break;
+      if (types.includes(it.type) && far(it)) { place(it); need--; }
+    }
+    if (nearPlastic < 1) {
+      const it = this.items.find((i) => i.type === 'plastic' && far(i));
+      if (it) place(it);
+    }
   }
 
   nearestOfTypes(pos, types, maxD = 60) {

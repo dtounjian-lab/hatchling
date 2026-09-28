@@ -46,7 +46,21 @@ export function updateRunner(a, dt, time, obstacles) {
     a.phase += dt * (sp / (a.size * 1.0) + 0.2);
     a.amp = 1;
     a.roll = Math.sin(a.phase * TAU * 2) * 0.1;
-    if (a.pos.z < 0.2) { a.state = 'swim'; a.t = 0; }
+    if (a.pos.z < 0.2) { a.state = 'swim'; a.t = 0; a.data.reached = true; }
+    return;
+  }
+  if (a.state === 'lured') {
+    // confused by artificial light, crawling inland away from the sea
+    const L = a.data.lure;
+    a.yaw = dampAngle(a.yaw, Math.atan2(L.x - a.pos.x, L.z - a.pos.z) + Math.sin(time * 2 + (a.data.seed ?? 0)) * 0.3, 2.5, dt);
+    const sp = a.data.speed * 0.8;
+    a.pos.x += Math.sin(a.yaw) * sp * dt;
+    a.pos.z += Math.cos(a.yaw) * sp * dt;
+    a.pos.y = groundHeight(a.pos.x, a.pos.z) + a.size * 0.1;
+    a.mode = 'land';
+    a.phase += dt * (sp / a.size + 0.2);
+    a.amp = 1;
+    if (a.pos.z > L.z - 12) a.active = false;
     return;
   }
   if (a.state === 'swim') {

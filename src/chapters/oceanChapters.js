@@ -4,6 +4,7 @@ import { Chapter, spawnSibling, updateRunner } from './base.js';
 import { groundHeight, WORLD, ZONES, zoneIndexAt } from '../world/terrain.js';
 import { surfaceHeight, surfEnvelope, surfPhase } from '../world/water.js';
 import { TurtleModel } from '../player/turtleModel.js';
+import { GhostNet } from '../creatures/hazards.js';
 import { SPECIES } from '../species.js';
 import { rand, clamp, lerp, smoothstep, damp, dampAngle, wrapAngle, TAU } from '../core/util.js';
 
@@ -133,6 +134,17 @@ export class Surf extends Chapter {
 const STAGES = ['Hatchling', 'Juvenile', 'Subadult', 'Adult'];
 export function stageName(g) { return g >= 0.999 ? 'Adult' : STAGES[Math.min(3, Math.floor(g * 4))]; }
 
+const ZONE_SUBS = [
+  '',
+  'Limestone ledges, soft corals and sponges off Nokomis',
+  'Floating golden gardens where young turtles spend their lost years',
+  'Blue water, jellyfish blooms and the long horizon',
+  'Where the shelf drops into the dark. Only bioluminescence lights the way',
+];
+const CAPS = [0.3, 0.3, 0.55, 0.8, 1.0];
+const MULTS = [1, 1, 1.15, 1.3, 1.45];
+const ZONE_START = [-80, -80, -420, -720, -1050];
+
 export class Growing extends Chapter {
   static meta = { num: 'Chapter IV', title: 'Growing Up', sub: 'Eat. Grow. Go deeper.', mood: 'reef' };
 
@@ -142,15 +154,18 @@ export class Growing extends Chapter {
     P.mode = P.mode === 'air' ? 'air' : 'swim';
     P.control = true;
     P.bounds = { minX: -215, maxX: 215, minZ: -415, maxZ: -40 };
-    G.sys.food = true; G.sys.shells = true; G.sys.sharks = true; G.sys.currents = true;
+    G.sys.food = true; G.sys.shells = 'sea'; G.sys.sharks = true; G.sys.currents = true;
     G.hud({ meters: true, growth: true, diet: true });
-    G.ui.tips('Eat what your species eats<br>Your diet is shown bottom left<br>Avoid plastic<br>Surface to breathe');
-    setTimeout(() => G.ui.tips(''), 16000);
+    G.ui.tips('Eat what your species eats<br>Look for the sparkles: that is your food<br>Avoid plastic<br>Ride currents to go faster');
+    setTimeout(() => G.ui.tips(''), 18000);
     G.showCard(Growing.meta);
     this.lastStage = -1;
     this.warnT = 0;
-    this.hintT = 0;
     this.deepGate = P.species.id === 'leatherback' ? 0.68 : 0.75;
+    this.visited = new Set();
+    this.ghost = { state: 'none', t: 0, taps: 0 };
+    if (!G.ghostNet) G.ghostNet = new GhostNet(G.scene);
+    this.circleDone = false;
   }
 
   update(dt) {
@@ -158,9 +173,9 @@ export class Growing extends Chapter {
     const G = this.game, P = G.player;
     const g = P.growth;
     // size-gated zones
-    let minZ = -415, msg = 'Grow to Juvenile to brave the kelp forest currents';
-    if (g >= 0.25) { minZ = -715; msg = 'Grow to Subadult to cross into the open ocean'; }
-    if (g >= 0.5) { minZ = -1045; msg = 'Grow larger to survive the crushing deep'; }
+    let minZ = -415, msg = 'Grow to Juvenile to reach the Sargassum Line';
+    if (g >= 0.25) { minZ = -715; msg = 'Grow to Subadult to cross into the open Gulf'; }
+    if (g >= 0.5) { minZ = -1045; msg = 'Grow larger to survive the Florida Escarpment'; }
     if (g >= this.deepGate) { minZ = -1370; msg = ''; }
     P.bounds.minZ = minZ;
     P.depthLimit = g >= this.deepGate ? -1e9 : -88;
@@ -176,37 +191,150 @@ export class Growing extends Chapter {
     const st = Math.min(3, Math.floor(g * 4));
     if (st !== this.lastStage) {
       if (this.lastStage >= 0 && st > this.lastStage) {
-        G.ui.toast(`She has grown: ${STAGES[st]}`, 'gold');
+        G.ui.toast(`${G.turtleName || 'She'} has grown: ${STAGES[st]}`, 'gold');
         G.audio.chime();
-        const zoneName = ['', 'The kelp forest is open to you', 'The open ocean is open to you', 'The deep is open to you'][st];
-        if (zoneName) setTimeout(() => G.ui.toast(zoneName, 'gold'), 1400);
+        const opened = ['', 'The Sargassum Line is open to you', 'The open Gulf is open to you', 'The Florida Escarpment is open to you'][st];
+        if (opened) setTimeout(() => G.ui.toast(opened, 'gold'), 1400);
       }
       this.lastStage = st;
     }
-    // objective
+    // zone title banners the first time she reaches each zone
     const zi = zoneIndexAt(P.pos.z, P.pos.y);
-    const cap = [0.3, 0.3, 0.55, 0.8, 1.0][zi];
+    const zk = Math.max(1, zi);
+    if (!this.visited.has(zk)) {
+      this.visited.add(zk);
+      G.ui.banner(ZONES[zk].name, ZONE_SUBS[zk]);
+    }
+    // objective: how many meals to the next stage, or where to go next
+    const cap = CAPS[zi];
     let obj;
-    if (g >= 0.999) obj = 'Fully grown';
-    else if (g >= cap - 0.001) obj = 'These waters cannot feed you now. Swim farther from shore';
-    else obj = `Eat and grow  ·  ${stageName(g)}`;
+    if (g >= 0.999) { obj = 'Fully grown'; G.ui.compass(null); }
+    else if (g >= cap - 0.001) {
+      const next = Math.min(4, zk + 1);
+      obj = `You have outgrown these waters. Head for ${ZONES[next].name}`;
+      const tz = ZONE_START[next] - 25, tx = P.pos.x;
+      const ty = next === 4 ? -110 : P.pos.y;
+      const ang = Math.atan2(tx - P.pos.x, tz - P.pos.z);
+      G.ui.compass(-wrapAngle(ang - P.yaw), `${ZONES[next].name}  ·  ${Math.round(Math.max(0, Math.hypot(tz - P.pos.z, ty - P.pos.y)) * 0.9)} m`);
+    } else {
+      const stageT = (Math.floor(g * 4) + 1) / 4;
+      const perMeal = 0.027 * 1.6 * MULTS[zi];
+      if (stageT <= cap) {
+        const meals = Math.max(1, Math.ceil((stageT - g) / perMeal));
+        obj = `Eat and grow  ·  about ${meals} more ${meals === 1 ? 'meal' : 'meals'} to ${STAGES[Math.min(3, Math.floor(g * 4) + 1)]}`;
+      } else {
+        const meals = Math.max(1, Math.ceil((cap - g) / perMeal));
+        obj = `Eat  ·  about ${meals} more ${meals === 1 ? 'meal' : 'meals'} here, then head for ${ZONES[Math.min(4, zk + 1)].name}`;
+      }
+      G.ui.compass(null);
+    }
     G.ui.setObjective(obj);
+    this.updateGhostNet(dt, zi);
+    this.updateDeep(zi);
     if (g >= 0.999 && !this.doneFlag) {
       this.doneFlag = true;
+      G.ui.compass(null);
       G.ui.toast('Fully grown', 'gold');
       setTimeout(() => G.goto(4), 1800);
     }
   }
 
-  onDeath() {
-    const G = this.game, P = G.player;
-    const zi = zoneIndexAt(P.pos.z, P.pos.y);
-    const spots = [[0, -5, -95], [0, -5, -110], [0, -10, -440], [0, -18, -740], [0, -40, -1070]];
-    const s = spots[zi];
-    G.respawnAt(new THREE.Vector3(s[0], Math.max(s[1], groundHeight(s[0], s[2]) + 3), s[2]), Math.PI);
+  // A ghost net drifts in; she must break free before her air runs out.
+  updateGhostNet(dt, zi) {
+    const G = this.game, P = G.player, gh = this.ghost, N = G.ghostNet;
+    gh.t += dt;
+    N.mat.uniforms.uTime.value = G.time;
+    if (gh.state === 'none') {
+      if (zi >= 2 && P.growth >= 0.3 && this.t > 25 && P.mode === 'swim' && P.pos.y < -3) {
+        const f = P.forward(new THREE.Vector3()); f.y = 0; f.normalize();
+        const side = new THREE.Vector3(f.z, 0, -f.x);
+        gh.pos = P.pos.clone().addScaledVector(f, 14).addScaledVector(side, 6);
+        gh.pos.y = Math.min(-2, P.pos.y + 1);
+        gh.size = P.size * 2.4;
+        gh.state = 'drift'; gh.t = 0;
+        N.mesh.visible = true;
+        N.mat.uniforms.uA.value = 1;
+        G.ui.banner('A ghost net', 'Abandoned fishing gear drifts toward you. Get away, or break free.');
+        G.audio.swell();
+      }
+      return;
+    }
+    if (gh.state === 'drift') {
+      const to = P.pos.clone().sub(gh.pos);
+      const d = to.length();
+      gh.pos.addScaledVector(to.normalize(), Math.min(d, 4.2 * dt));
+      if (d < P.size * 0.7 + gh.size * 0.55 && P.alive) {
+        gh.state = 'caught'; gh.taps = 0; gh.t = 0;
+        P.entangled = { ghost: true };
+        G.stats.nets++;
+        G.audio.hurt();
+        G.ui.toast('Tangled in a ghost net! Break free before your air runs out', 'bad');
+      } else if (gh.t > 28 || d > 90) {
+        gh.state = 'leaving'; gh.t = 0;
+        G.ui.toast('You slipped past the ghost net', 'good');
+      }
+    } else if (gh.state === 'caught') {
+      gh.pos.lerp(P.pos, 1 - Math.exp(-6 * dt));
+      gh.size += (P.size * 1.15 - gh.size) * Math.min(1, dt * 3);
+      P.breath = Math.max(0, P.breath - dt * 0.07);
+      G.ui.prompt('Tap Space to break free');
+      if (G.input.action) {
+        gh.taps++;
+        G.rig.shake(0.12);
+        G.particles.bubbles.burst(P.pos, 6, 1.5, 0.8, 0.08);
+        G.audio.dig();
+        if (gh.taps >= 10) {
+          P.entangled = null;
+          P.invuln = 2.5;
+          P.vel.copy(P.forward(new THREE.Vector3()).multiplyScalar(P.maxSpeed));
+          gh.state = 'leaving'; gh.t = 0;
+          G.ui.prompt('');
+          G.ui.toast('Free. Ghost nets drift for years, catching everything they touch.', 'good');
+        }
+      }
+    } else if (gh.state === 'leaving') {
+      gh.pos.y += dt * 0.6;
+      gh.pos.z += dt * 1.5;
+      N.mat.uniforms.uA.value = Math.max(0, 1 - gh.t / 8);
+      if (gh.t > 8) { gh.state = 'done'; N.mesh.visible = false; }
+    }
+    if (gh.state !== 'done') {
+      N.mesh.position.copy(gh.pos);
+      N.mesh.scale.setScalar(gh.size);
+      N.mesh.rotation.set(G.time * 0.2, G.time * 0.13, 0);
+    }
   }
 
-  exit() { this.game.player.depthLimit = -1e9; }
+  // The escarpment: dark water, bioluminescence, and a shark circling above.
+  updateDeep(zi) {
+    const G = this.game, P = G.player;
+    if (this.circleDone || zi !== 4 || P.pos.y > -100) return;
+    this.circleDone = true;
+    const s = G.sharks.find((x) => x.type === 'sixgill');
+    if (!s) return;
+    s.pos.set(P.pos.x - 20, Math.min(-8, P.pos.y + 22), P.pos.z + 20);
+    s.circle = { t: 45 };
+    s.state = 'circle';
+    setTimeout(() => G.ui.toast('A shark circles above. Stay deep until it leaves, but mind your air.', 'bad'), 1500);
+  }
+
+  onDeath() {
+    const G = this.game, P = G.player;
+    if (P.entangled) { P.entangled = null; G.ui.prompt(''); }
+    if (this.ghost.state === 'caught') { this.ghost.state = 'leaving'; this.ghost.t = 0; }
+    const zi = zoneIndexAt(P.pos.z, P.pos.y);
+    const spots = [[0, -5, -95], [0, -5, -110], [0, -10, -440], [0, -18, -740], [0, -40, -1070]];
+    const sp = spots[zi];
+    G.respawnAt(new THREE.Vector3(sp[0], Math.max(sp[1], groundHeight(sp[0], sp[2]) + 3), sp[2]), Math.PI);
+  }
+
+  exit() {
+    const G = this.game;
+    G.player.depthLimit = -1e9;
+    G.ui.compass(null);
+    if (G.ghostNet) G.ghostNet.mesh.visible = false;
+    G.player.entangled = null;
+  }
 }
 
 // ============================================================== V The Gathering
@@ -462,7 +590,7 @@ export const LANES = [{ z: -600, count: 2 }, { z: -470, count: 2 }, { z: -340, c
 export const NETS = [{ x: 0, z: -535, w: 110, h: 13 }, { x: 40, z: -405, w: 90, h: 15 }, { x: -30, z: -275, w: 100, h: 12 }];
 
 export class Journey extends Chapter {
-  static meta = { num: 'Chapter VII', title: 'The Journey Home', sub: 'The earth itself remembers the way.', mood: 'journey' };
+  static meta = { num: 'Chapter VII', title: 'The Journey Home', sub: 'The earth itself remembers the way back to Casey Key.', mood: 'journey' };
 
   enter() {
     const G = this.game, P = G.player;
@@ -482,15 +610,29 @@ export class Journey extends Chapter {
       P.breath = 1;
       P.bounds = { minX: -200, maxX: 200, minZ: -740, maxZ: 8 };
       G.crowd.clear();
-      G.sys.food = true; G.sys.shells = true; G.sys.sharks = true; G.sys.currents = false;
+      G.sys.food = true; G.sys.shells = 'sea'; G.sys.sharks = true; G.sys.currents = true;
       G.boats.setVisible(true);
       G.nets.setVisible(true);
       G.rig.override = null;
       G.rig.snap(P);
       G.hud({ meters: true, growth: false, diet: true });
-      G.ui.setObjective('Swim home to the beach where you were born');
-      G.ui.tips('Follow the shimmer and the compass<br>Dive under boats and nets<br>Surface to breathe between boat lanes');
+      G.ui.setObjective('Swim home to Casey Key, the beach where you were born');
+      G.ui.tips('Follow the shimmer and the compass<br>Dive under boats and nets<br>Red glow means a boat is coming');
       setTimeout(() => G.ui.tips(''), 15000);
+      G.atmos.sunset = true;
+      // a young Kemp's Ridley caught in a ghost net, waiting for help
+      this.rescue = { state: 'waiting', taps: 0, t: 0 };
+      const R = this.rescue;
+      R.pos = new THREE.Vector3(WORLD.nest.x - 12, -9, -505);
+      R.model = new TurtleModel(SPECIES.find((x) => x.id === 'kemps'));
+      R.model.setMaturity(0.35);
+      R.model.group.scale.setScalar(1.1);
+      R.model.group.position.copy(R.pos);
+      G.scene.add(R.model.group);
+      R.net = new GhostNet(G.scene);
+      R.net.mesh.visible = true;
+      R.net.mesh.position.copy(R.pos);
+      R.net.mesh.scale.setScalar(2.2);
       this.checkpoint = P.pos.clone();
       this.netTaps = 0;
       this.shimmerT = 0;
@@ -511,7 +653,25 @@ export class Journey extends Chapter {
     const nx = WORLD.nest.x - P.pos.x, nz = WORLD.nest.z - P.pos.z;
     const ang = Math.atan2(nx, nz);
     const rel = wrapAngle(ang - P.yaw);
-    G.ui.compass(-rel, `Home  ·  ${Math.round(Math.hypot(nx, nz) * 0.9)} m`);
+    this.updateRescue(dt);
+    const R = this.rescue;
+    if (R.state === 'seen') {
+      const rx = R.pos.x - P.pos.x, rz = R.pos.z - P.pos.z;
+      G.ui.compass(-wrapAngle(Math.atan2(rx, rz) - P.yaw), `Help  ·  ${Math.round(Math.hypot(rx, rz) * 0.9)} m`);
+    } else G.ui.compass(-rel, `Home  ·  ${Math.round(Math.hypot(nx, nz) * 0.9)} m`);
+    // warn when a boat is bearing down on her lane
+    let warnSide = 0;
+    if (P.pos.y > -7) {
+      for (const b of G.boats.boats) {
+        const dx = b.x - P.pos.x;
+        if (Math.abs(b.lane - P.pos.z) < 22 && Math.abs(dx) < 110 && Math.sign(-dx) === b.dir) {
+          const rightX = -Math.cos(P.yaw), rightZ = Math.sin(P.yaw);
+          warnSide = Math.sign(dx * rightX + (b.lane - P.pos.z) * rightZ) || 1;
+          if (!b.warned) { b.warned = true; G.ui.toast('Boat coming. Dive!', 'bad'); }
+        } else if (Math.abs(dx) > 140) b.warned = false;
+      }
+    }
+    G.ui.warn(warnSide);
     // magnetic shimmer leading home
     this.shimmerT -= dt;
     if (this.shimmerT <= 0) {
@@ -576,6 +736,51 @@ export class Journey extends Chapter {
     }
   }
 
+  updateRescue(dt) {
+    const G = this.game, P = G.player, R = this.rescue;
+    if (!R || R.state === 'gone') return;
+    R.t += dt;
+    R.net.mat.uniforms.uTime.value = G.time;
+    const d = P.pos.distanceTo(R.pos);
+    if (R.state === 'waiting' || R.state === 'seen') {
+      // struggling in the net
+      R.model.group.rotation.set(Math.sin(R.t * 3) * 0.3, R.t * 0.4, Math.sin(R.t * 4) * 0.4);
+      R.model.animate(dt, { mode: 'swim', phase: (R.t * 2.2) % 1, amp: 1, glide: 0, turn: 0 });
+      R.net.mesh.rotation.set(R.t * 0.1, R.t * 0.07, 0);
+      if (R.state === 'waiting' && d < 80) {
+        R.state = 'seen';
+        G.ui.banner('Caught in a ghost net', 'A young Kemp\'s Ridley is trapped. Swim over and tear her free.');
+        G.ui.setObjective('Free the trapped turtle');
+      }
+      if (d < P.size * 2.2 + 3) {
+        G.ui.prompt('Tap Space to tear the net');
+        if (G.input.action) {
+          R.taps++;
+          G.rig.shake(0.1);
+          G.particles.bubbles.burst(R.pos, 8, 1.5, 0.8, 0.08);
+          G.audio.dig();
+          if (R.taps >= 8) {
+            R.state = 'free'; R.t = 0;
+            G.ui.prompt('');
+            G.audio.chime();
+            G.stats.rescued = true;
+            G.ui.toast("You freed a young Kemp's Ridley", 'gold');
+            G.ui.setObjective('Swim home to Casey Key, the beach where you were born');
+          }
+        }
+      } else if (G.ui.promptText === 'Tap Space to tear the net') G.ui.prompt('');
+    } else if (R.state === 'free') {
+      // she swims away out to sea while the torn net drifts off
+      R.pos.z -= dt * 5; R.pos.y -= dt * 0.8;
+      R.model.group.rotation.set(0.15, Math.PI, 0);
+      R.model.animate(dt, { mode: 'swim', phase: (R.t * 1.4) % 1, amp: 1, glide: 0, turn: 0 });
+      R.net.mesh.position.y += dt * 0.5;
+      R.net.mat.uniforms.uA.value = Math.max(0, 1 - R.t / 6);
+      if (R.t > 8) { R.state = 'gone'; G.scene.remove(R.model.group); R.net.mesh.visible = false; }
+    }
+    R.model.group.position.copy(R.pos);
+  }
+
   onDeath() {
     const G = this.game, P = G.player;
     P.entangled = null;
@@ -588,6 +793,9 @@ export class Journey extends Chapter {
     G.boats.setVisible(false);
     G.nets.setVisible(false);
     G.engineLevel = 0;
+    G.atmos.sunset = false;
+    G.ui.warn(0);
+    if (this.rescue && this.rescue.model) { G.scene.remove(this.rescue.model.group); this.rescue.net.mesh.visible = false; }
     G.ui.compass(null);
     G.player.entangled = null;
     G.player.bounds = null;

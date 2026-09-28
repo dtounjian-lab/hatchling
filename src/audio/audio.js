@@ -358,6 +358,22 @@ export class AudioEngine {
     o.connect(g).connect(this.revSend); o.connect(g).connect(this.musicBus);
     o.start(t); vib.start(t); o.stop(t + 3.5); vib.stop(t + 3.5);
   }
+  dolphin(v = 0.5) {
+    if (!this.ready) return;
+    const ctx = this.ctx, t = this.now;
+    // a rising, warbling whistle followed by a click train
+    const o = ctx.createOscillator(); o.type = 'sine';
+    const f0 = 3800 + Math.random() * 1500;
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.linearRampToValueAtTime(f0 * 1.7, t + 0.35);
+    o.frequency.linearRampToValueAtTime(f0 * 1.2, t + 0.6);
+    const vib = ctx.createOscillator(); vib.frequency.value = 18; const vg = ctx.createGain(); vg.gain.value = 180;
+    vib.connect(vg).connect(o.frequency);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.06 * v, t + 0.05); g.gain.linearRampToValueAtTime(0, t + 0.65);
+    o.connect(g).connect(this.sfxBus);
+    o.start(t); vib.start(t); o.stop(t + 0.7); vib.stop(t + 0.7);
+    for (let i = 0; i < 10; i++) this.noiseHit(t + 0.75 + i * 0.035, 0.01, 'highpass', 5000, 4500, 0.12 * v);
+  }
   heartbeat() {
     if (!this.ready) return;
     const t = this.now;

@@ -22,9 +22,12 @@ export class TurtleCrowd {
     this.aColA = mk(3); this.aColB = mk(3); this.aColC = mk(3); this.aPat = mk(2);
     this.aSkinA = mk(3); this.aSkinB = mk(3); this.aSkinPat = mk(2);
 
-    const shellG = G.shell.clone();
-    shellG.setAttribute('aColA', this.aColA); shellG.setAttribute('aColB', this.aColB);
-    shellG.setAttribute('aColC', this.aColC); shellG.setAttribute('aPat', this.aPat);
+    const shelled = (g) => {
+      const c = g.clone();
+      c.setAttribute('aColA', this.aColA); c.setAttribute('aColB', this.aColB);
+      c.setAttribute('aColC', this.aColC); c.setAttribute('aPat', this.aPat);
+      return c;
+    };
     const skinned = (g) => {
       const c = g.clone();
       c.setAttribute('aSkinA', this.aSkinA); c.setAttribute('aSkinB', this.aSkinB); c.setAttribute('aSkinPat', this.aSkinPat);
@@ -38,9 +41,13 @@ export class TurtleCrowd {
       scene.add(m);
       return m;
     };
+    this.shells = {};
+    for (const k of Object.keys(G.shells)) this.shells[k] = im(shelled(G.shells[k]), mats.shell, max);
+    this.heads = {};
+    for (const k of Object.keys(G.heads)) this.heads[k] = im(skinned(G.heads[k]), mats.skin, max);
     this.meshes = {
-      shell: im(shellG, mats.shell, max),
-      head: im(skinned(G.head), mats.skin, max),
+      ...Object.fromEntries(Object.entries(this.shells).map(([k, v]) => ['shell_' + k, v])),
+      ...Object.fromEntries(Object.entries(this.heads).map(([k, v]) => ['head_' + k, v])),
       ffR: im(skinned(G.ffR), mats.skin, max),
       ffL: im(skinned(G.ffL), mats.skin, max),
       rfR: im(skinned(G.rfR), mats.skin, max),
@@ -109,12 +116,14 @@ export class TurtleCrowd {
       }
       return;
     }
-    if (this.hiddenApplied) { for (const k in M) M[k].visible = true; this.hiddenApplied = false; }
+    this.hiddenApplied = false;
     const P = this.pose;
     for (const a of this.agents) {
       const i = a.i;
+      for (const k in this.shells) this.shells[k].setMatrixAt(i, ZERO);
+      for (const k in this.heads) this.heads[k].setMatrixAt(i, ZERO);
       if (!a.active) {
-        for (const k of ['shell', 'head', 'ffR', 'ffL', 'rfR', 'rfL', 'tail']) M[k].setMatrixAt(i, ZERO);
+        for (const k of ['ffR', 'ffL', 'rfR', 'rfL', 'tail']) M[k].setMatrixAt(i, ZERO);
         M.eye.setMatrixAt(i * 2, ZERO); M.eye.setMatrixAt(i * 2 + 1, ZERO);
         M.hi.setMatrixAt(i * 2, ZERO); M.hi.setMatrixAt(i * 2 + 1, ZERO);
         continue;
@@ -123,8 +132,8 @@ export class TurtleCrowd {
       _q.setFromEuler(_e.set(-a.pitch, a.yaw, a.roll, 'YXZ'));
       _b.compose(a.pos, _q, _s.setScalar(a.size));
       flipperPose(a.mode, a.phase, a.amp, a.glide, a.turn, a.sp.gaitSync, P);
-      this.setPart(M.shell, i, _b, r.shell.p, null, r.shell.s);
-      this.setPart(M.head, i, _b, r.head.p, null, r.head.s);
+      this.setPart(this.shells[a.sp.shellType || 'dome'], i, _b, r.shell.p, null, r.shell.s);
+      this.setPart(this.heads[a.sp.headType || 'normal'], i, _b, r.head.p, null, r.head.s);
       this.setPart(M.tail, i, _b, r.tail.p, null, r.tail.s);
       this.setPart(M.ffR, i, _b, r.ff.p, P.fR, r.ff.s);
       _e.set(P.fL.x, -P.fL.y, -P.fL.z);
@@ -138,6 +147,14 @@ export class TurtleCrowd {
       this.setPart(M.hi, i * 2, _b, [hp[0] + hip[0], hp[1] + hip[1], hp[2] + hip[2]], null, r.hi.r);
       this.setPart(M.hi, i * 2 + 1, _b, [hp[0] - ep[0] + (hip[0] - ep[0]), hp[1] + hip[1], hp[2] + hip[2]], null, r.hi.r);
     }
-    for (const k in M) M[k].instanceMatrix.needsUpdate = true;
+    // only draw up to the highest active agent
+    let hi = -1;
+    for (const a of this.agents) if (a.active) hi = a.i;
+    for (const k in M) {
+      const n = k === 'eye' || k === 'hi' ? (hi + 1) * 2 : hi + 1;
+      M[k].count = n;
+      M[k].visible = n > 0;
+      M[k].instanceMatrix.needsUpdate = true;
+    }
   }
 }

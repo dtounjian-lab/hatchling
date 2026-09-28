@@ -52,7 +52,7 @@ export class CameraRig {
       des.y += size * 0.75 + 0.2;
       dl.copy(_t).addScaledVector(dir, size * 2.6);
       this.lambda = 5.5;
-      this.baseFov = 60 + clamp(sp / player.maxSpeed, 0, 1.5) * 5;
+      this.baseFov = 60 + clamp(sp / player.maxSpeed, 0, 1.5) * 5 + (player.inCurrent ? 9 : 0);
     }
     // terrain: pull in if the line to the camera dips into the ground
     const tgt = player.pos;

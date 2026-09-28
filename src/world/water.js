@@ -56,7 +56,7 @@ export function createWater(scene) {
       uDayDeep: { value: new THREE.Color(0.02, 0.22, 0.3) },
     },
   ]);
-  for (const k of ['uTime', 'uDay', 'uSunDir', 'uSunColor', 'uUnderColor']) uniforms[k] = U[k];
+  for (const k of ['uTime', 'uDay', 'uSunDir', 'uSunColor', 'uUnderColor', 'uWarm']) uniforms[k] = U[k];
 
   const mat = new THREE.ShaderMaterial({
     uniforms,
@@ -86,7 +86,7 @@ export function createWater(scene) {
       }
     `,
     fragmentShader: /* glsl */ `
-      uniform float uTime; uniform float uDay; uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uUnderColor;
+      uniform float uTime; uniform float uDay; uniform float uWarm; uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uUnderColor;
       uniform vec3 uNightDeep; uniform vec3 uDayDeep;
       varying vec3 vW; varying vec3 vN; varying float vEnv; varying float vPh;
       #include <fog_pars_fragment>
@@ -101,7 +101,8 @@ export function createWater(scene) {
         if (gl_FrontFacing) {
           float fres = 0.02 + 0.98 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
           vec3 skyN = mix(vec3(0.03, 0.06, 0.13), vec3(0.45, 0.68, 0.88), uDay);
-          vec3 deep = mix(uNightDeep, uDayDeep, uDay);
+          skyN = mix(skyN, vec3(1.0, 0.6, 0.32), uWarm * 0.7);
+          vec3 deep = mix(mix(uNightDeep, uDayDeep, uDay), vec3(0.22, 0.15, 0.1), uWarm * 0.45);
           col = mix(deep, skyN, fres);
           vec3 R = reflect(-V, N);
           float sd = max(dot(R, normalize(uSunDir)), 0.0);
@@ -124,7 +125,7 @@ export function createWater(scene) {
           float cw = D.y + (N.x * D.x + N.z * D.z) * 0.6;
           float window = smoothstep(0.58, 0.8, cw);
           float shimmer = pow(vnoise(q * 3.0 + uTime * 1.5 + rip * 6.0), 6.0) * 2.0;
-          vec3 skyTint = mix(vec3(0.12, 0.2, 0.3), vec3(0.75, 0.95, 1.0), uDay);
+          vec3 skyTint = mix(mix(vec3(0.12, 0.2, 0.3), vec3(0.75, 0.95, 1.0), uDay), vec3(1.0, 0.6, 0.42), uWarm * 0.75);
           vec3 tir = uUnderColor * (0.75 + 0.3 * rip.x);
           col = mix(tir, skyTint * (0.8 + shimmer * 0.45 * uDay), window);
           float sd = max(dot(D, normalize(uSunDir + vec3(rip.x, 0.0, rip.y) * 0.4)), 0.0);

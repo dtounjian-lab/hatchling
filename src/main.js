@@ -6,7 +6,7 @@ import { createPost } from './core/post.js';
 import { clamp, lerp, smoothstep, rand } from './core/util.js';
 import { UI, wait } from './ui/ui.js';
 import { AudioEngine } from './audio/audio.js';
-import { SPECIES, speciesById, FOODS } from './species.js';
+import { SPECIES, speciesById, FOODS, dietGuide } from './species.js';
 import { createTerrain, groundHeight, WORLD, ZONES, zoneIndexAt } from './world/terrain.js';
 import { createWater, surfaceHeight } from './world/water.js';
 import { createSky } from './world/sky.js';
@@ -18,10 +18,12 @@ import { createKelp } from './world/kelp.js';
 import { createBeach } from './world/beach.js';
 import { Eggs, Shells, Currents, Vents } from './world/extras.js';
 import { BlobShadows } from './world/shadows.js';
+import { Tracks } from './world/tracks.js';
 import { FishSchools } from './creatures/fish.js';
 import { Food, AmbientJellies } from './creatures/food.js';
 import { Shark, Anglers } from './creatures/predators.js';
 import { Whale } from './creatures/whale.js';
+import { Dolphins } from './creatures/dolphins.js';
 import { BeachLife } from './creatures/beachLife.js';
 import { Boats, Nets } from './creatures/hazards.js';
 import { TurtleCrowd } from './creatures/turtleCrowd.js';
@@ -92,7 +94,7 @@ class Game {
           glow: new ParticlePool(S, 1400, 'glow', { color: 0x66e0ff, additive: true, size: 1 }),
         };
       },
-      () => { this.fish = new FishSchools(S); this.jellies = new AmbientJellies(S); this.whale = new Whale(S); },
+      () => { this.fish = new FishSchools(S); this.jellies = new AmbientJellies(S); this.whale = new Whale(S); this.dolphins = new Dolphins(S); },
       () => { this.food = new Food(S); this.shells = new Shells(S); this.currents = new Currents(S); this.vents = new Vents(S); },
       () => {
         this.sharks = [
@@ -114,9 +116,10 @@ class Game {
         this.eggs = new Eggs(S);
         this.crowd = new TurtleCrowd(S, 64);
         this.blobs = new BlobShadows(S, 120);
+        this.tracks = new Tracks(S, 900);
       },
       () => {
-        this.species = speciesById(params.get('sp') || 'green');
+        this.species = speciesById(params.get('sp') || 'loggerhead');
         this.speciesIdx = SPECIES.indexOf(this.species);
         this.player = new Player(this, this.species);
         this.player.setSpecies(this.species);
@@ -166,6 +169,16 @@ class Game {
       this.scene.add(this.keyLight);
     }
     this.keyLight.position.set(n.x + 0.7, groundHeight(n.x, n.z) + 0.9, n.z + 0.6);
+    // a few siblings' tracks already wander from the nest toward the surf
+    this.tracks.clear();
+    for (let k = 0; k < 4; k++) {
+      let x = n.x + (k - 1.5) * 0.9, z = n.z - 1.2, yaw = Math.PI + (k - 1.5) * 0.15;
+      for (let i = 0; i < 26; i++) {
+        yaw += Math.sin(i * 0.7 + k * 2) * 0.08;
+        x += Math.sin(yaw) * 0.22; z += Math.cos(yaw) * 0.22;
+        this.tracks.step({ x, z }, yaw, 0.34, 1e7, 0.6);
+      }
+    }
     this.rig.blend = 1;
     this.rig.pos.copy(this.rig.override.pos);
     this.rig.look.copy(this.rig.override.look);
@@ -175,11 +188,14 @@ class Game {
     const P = this.player;
     this.titleT += dt;
     this.hop = Math.max(0, this.hop - dt * 2.5);
+    this.look = Math.max(0, (this.look || 0) - dt * 0.6);
     P.yaw += dt * 0.45;
-    P.aimYaw = P.yaw;
-    P.aimPitch = 0.15 + Math.sin(this.titleT * 0.7) * 0.1;
-    P.stroke += dt * (0.35 + this.hop * 2);
-    P.amp = 0.45 + this.hop;
+    P.aimYaw = P.yaw + Math.sin(this.titleT * 5.5) * 1.2 * this.look;
+    P.aimPitch = 0.15 + Math.sin(this.titleT * 0.7) * 0.1 + this.look * 0.3;
+    P.stroke += dt * (0.35 + this.hop * 3);
+    P.amp = 0.45 + this.hop * 1.2;
+    const s = this.species.stats.size;
+    P.displayScale = Math.pow(s, 1.15) / (0.85 + 0.15 * s);
     const n = WORLD.nest;
     P.pos.y = groundHeight(n.x, n.z) + 0.02 + Math.sin(this.hop * Math.PI) * 0.12;
     P.mode = 'locked';
@@ -191,6 +207,7 @@ class Game {
     this.player.setSpecies(this.species);
     this.ui.setSpecies(this.species, this.speciesIdx, SPECIES.length);
     this.hop = 1;
+    this.look = 1;
     this.audio.chirp();
   }
 
@@ -199,6 +216,12 @@ class Game {
     document.getElementById('spPrev').onclick = () => { this.audio.init(); this.cycleSpecies(-1); };
     document.getElementById('spNext').onclick = () => { this.audio.init(); this.cycleSpecies(1); };
     document.getElementById('beginBtn').onclick = () => this.startGame(0, 0);
+    const nameEl = document.getElementById('turtleName');
+    const suggestions = ['Nokomis', 'Casey', 'Luna', 'Shelly', 'Marina', 'Pearl', 'Coral', 'Sandy', 'Venice', 'Myakka'];
+    let saved = '';
+    try { saved = localStorage.getItem('hatchling.name') || ''; } catch (e) { /* storage unavailable */ }
+    nameEl.value = saved || suggestions[Math.floor(Math.random() * suggestions.length)];
+    nameEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { nameEl.blur(); this.startGame(0, 0); } });
     document.getElementById('resumeBtn').onclick = () => this.resume();
     document.getElementById('capture').onclick = () => this.resume();
     document.getElementById('againBtn').onclick = () => { window.onbeforeunload = null; location.href = location.pathname; };
@@ -206,6 +229,7 @@ class Game {
     document.getElementById('optVol').oninput = (e) => this.audio.setVolume(parseFloat(e.target.value));
     document.getElementById('optSens').oninput = (e) => (this.input.sensitivity = parseFloat(e.target.value));
     window.addEventListener('keydown', (e) => {
+      if (e.target && e.target.tagName === 'INPUT') return;
       if (this.state === 'title') {
         if (e.code === 'ArrowLeft' || e.code === 'KeyA') { this.audio.init(); this.cycleSpecies(-1); }
         if (e.code === 'ArrowRight' || e.code === 'KeyD') { this.audio.init(); this.cycleSpecies(1); }
@@ -229,6 +253,12 @@ class Game {
     this.audio.init();
     this.ui.showTitle(false);
     this.state = 'play';
+    const nameEl = document.getElementById('turtleName');
+    this.turtleName = (nameEl.value || '').trim().slice(0, 16) || 'Nokomis';
+    try { localStorage.setItem('hatchling.name', this.turtleName); } catch (e) { /* storage unavailable */ }
+    this.ui.setName(`${this.turtleName}  ·  ${this.species.name}`);
+    this.player.displayScale = 1;
+    this.tracks.clear();
     this.player.setSpecies(this.species);
     this.player.growth = growth;
     this.rig.override = null;
@@ -377,7 +407,7 @@ class Game {
       const zi = { reef: 1, kelp: 2, open: 3, deep: 4 }[it.zone];
       const cap = [0.3, 0.3, 0.55, 0.8, 1.0][zi];
       const mult = [1, 1, 1.15, 1.3, 1.45][zi];
-      const gain = FOODS[it.type].base * match * mult;
+      const gain = FOODS[it.type].base * match * mult * 1.6;
       if (P.growth < cap) P.growth = Math.min(cap, P.growth + gain);
       else P.growth = Math.min(1, P.growth + gain * 0.1);
       if (P.growth > 0.985) P.growth = 1;
@@ -395,20 +425,26 @@ class Game {
     this.ui.showHUD(false);
     const s = this.stats;
     const mm = Math.floor(s.playTime / 60), ss = Math.floor(s.playTime % 60);
+    const name = this.turtleName || 'Nokomis';
     this.ui.results({
-      title: 'A life, complete',
-      sub: `${this.species.name} sea turtle  ·  ${this.species.latin}`,
+      title: `${name}'s life, complete`,
+      sub: `${this.species.name}  ·  ${this.species.latin}  ·  Casey Key, Florida`,
       items: [
         ['Time', `${mm}:${String(ss).padStart(2, '0')}`],
         ['Food eaten', s.eaten],
-        ['Shells', `${this.shells.collected} / ${this.shells.total}`],
-        ['Distance', `${(this.player.distance * 0.0012).toFixed(1)} km`],
+        ['Shark teeth', `${this.shells.teeth} / ${this.shells.totalTeeth}`],
+        ['Sea glass', `${this.shells.glass} / ${this.shells.totalGlass}`],
         ['Eggs laid', s.eggs || 108],
         ['Hatchlings', s.hatchlings || 48],
         ['Plastic eaten', s.plastic],
         ['Second chances', s.deaths + s.caught],
       ],
     });
+    const total = s.siblingsTotal || 12;
+    const saved = Math.min(total, s.siblingsSaved || 0);
+    let lineage = `${saved} of her ${total} siblings reached the sea with her. The rest were taken by gulls and ghost crabs, or lured inland by porch lights.`;
+    if (s.rescued) lineage += " On the way home she freed a young Kemp's Ridley from a ghost net.";
+    this.ui.lineage(lineage);
     this.ui.fade(0, 1200);
   }
 
@@ -495,6 +531,9 @@ class Game {
     const surfY = surfaceHeight(camPos.x, camPos.z, time);
     this.water.update(camPos);
     this.sky.update(camPos);
+    const floraRange = camPos.y < 0.5 ? 140 : 70;
+    this.reef.update(camPos, floraRange);
+    this.kelp.update(camPos, floraRange);
     const zi = this.atmos.update(dt, cam, surfY, this.day, P.size);
     this.zone = zi;
     const under = this.atmos.underwater;
@@ -517,30 +556,51 @@ class Game {
       this.whaleT -= dt;
       if (this.whaleT <= 0 && this.whale.pos.distanceTo(P.pos) < 200) { this.whaleT = 22; this.audio.whale(); }
     }
+    const dd = this.dolphins.update(dt, time, P, this.state === 'play' && underPlayer && [3, 4, 6].includes(this.chapterIndex));
+    if (dd < 70) {
+      this.dolphinT = (this.dolphinT ?? 0) - dt;
+      if (this.dolphinT <= 0) { this.dolphinT = rand(3, 6); this.audio.dolphin(clamp(1.3 - dd / 70, 0.3, 1)); }
+      if (!this.sawDolphins && dd < 50) { this.sawDolphins = true; this.ui.toast('Bottlenose dolphins, like the resident pod of Sarasota Bay', 'gold'); }
+    }
     const active = this.state === 'play' && P.alive && P.control;
     // food
     if (this.sys.food !== this.food.visible) this.food.setVisible(this.sys.food);
     if (this.sys.food) {
-      const it = this.food.update(dt, time, P, active && underPlayer);
+      const diet = dietGuide(this.species, P.growth).full;
+      this.foodTimer = (this.foodTimer ?? 0) - dt;
+      if (this.foodTimer <= 0 && (this.chapterIndex === 3 || this.chapterIndex === 6) && underPlayer && this.state === 'play') {
+        this.foodTimer = 0.6;
+        const zid = ['reef', 'reef', 'kelp', 'open', 'deep'][zoneIndexAt(P.pos.z, P.pos.y)];
+        this.food.ensureNear(P, diet, zid, this.chapterIndex === 3 ? 9 : 4);
+      }
+      const it = this.food.update(dt, time, P, active && underPlayer, diet);
       if (it) this.handleEat(it);
     }
-    this.shells.setVisible(this.sys.shells);
+    const tv = this.sys.shells;
+    this.shells.setVisible(tv === 'land' || tv === 'both', tv === 'sea' || tv === 'both');
     if (this.sys.shells && active) {
       const s = this.shells.update(time, P);
-      if (s) { this.audio.pickup(); this.ui.toast(`Shell found  ·  ${this.shells.collected} / ${this.shells.total}`, 'gold'); P.health = P.maxHealth; }
+      if (s) {
+        this.audio.pickup();
+        const T = this.shells;
+        this.ui.toast(s.kind === 'tooth' ? `Fossil shark tooth  ·  ${T.teeth} / ${T.totalTeeth}` : `Sea glass  ·  ${T.glass} / ${T.totalGlass}`, 'gold');
+        P.health = P.maxHealth;
+        this.particles.glow.burst(s.pos, 14, 1.5, 0.8, 0.05 + P.size * 0.02, new THREE.Color(1, 0.9, 0.6));
+      }
     }
     this.currents.setVisible(this.sys.currents);
     if (this.sys.currents) {
       const f = this._cf || (this._cf = new THREE.Vector3());
-      const inside = this.currents.update(dt, P, f);
+      const inside = this.currents.update(dt, P, f, this.chapterIndex === 6);
       if (inside && underPlayer) {
         P.ext.add(f);
-        if (!this.inCurrent) { this.ui.toast('Riding the current', 'good'); this.audio.swell(); }
+        if (!this.inCurrent) { this.ui.toast('Riding the current', 'good'); this.audio.swell(); this.audio.dash(); }
       }
-      this.inCurrent = inside;
-    }
+      this.inCurrent = inside && underPlayer;
+      P.inCurrent = this.inCurrent;
+    } else P.inCurrent = false;
     // predators
-    P.hidden = (zi === 2 && P.pos.y < groundHeight(P.pos.x, P.pos.z) + 16) || (zi === 1 && P.pos.y < groundHeight(P.pos.x, P.pos.z) + 2.5);
+    P.hidden = (zi === 2 && P.pos.y > -6) || (zi === 1 && P.pos.y < groundHeight(P.pos.x, P.pos.z) + 2.5);
     for (const s of this.sharks) {
       if (s.pos.distanceToSquared(P.pos) > 260 * 260 && this.state === 'play') continue;
       const dmg = s.update(dt, P, this.sys.sharks && active && underPlayer);
@@ -561,7 +621,7 @@ class Game {
       const sp = P.vel.length();
       const f = P.forward();
       const side = new THREE.Vector3(f.z, 0, -f.x).normalize();
-      if ((sp > P.maxSpeed * 0.85 && P.pitch < -0.25) || P.dashT > 0) {
+      if ((sp > P.maxSpeed * 0.85 && P.pitch < -0.25) || P.dashT > 0 || P.inCurrent) {
         for (let k = 0; k < 3; k++) {
           const s = k % 2 ? 1 : -1;
           const p = P.pos.clone().addScaledVector(side, s * P.size * rand(0.4, 0.7)).addScaledVector(f, -P.size * rand(0, 0.5));
@@ -582,6 +642,17 @@ class Game {
     const surfAt = (x, z) => surfaceHeight(x, z, time);
     for (const k in this.particles) this.particles[k].update(dt, surfAt);
     this.crowd.update();
+    // flipper tracks in the sand
+    if (P.mode === 'land' && P.landSpeed > 0.15) {
+      const k = Math.floor(P.stroke * 2);
+      if (k !== this.lastPrint) { this.lastPrint = k; this.tracks.step(P.pos, P.yaw, P.size, 45, 0.7); }
+    }
+    for (const a of this.crowd.agents) {
+      if (!a.active || a.mode !== 'land' || a.state !== 'run') continue;
+      const k = Math.floor(a.phase * 2);
+      if (k !== a.data.print) { a.data.print = k; this.tracks.step(a.pos, a.yaw, a.size, 30, 0.55); }
+    }
+    this.tracks.update(dt);
     // contact shadows
     const B = this.blobs;
     B.begin();
@@ -623,12 +694,12 @@ class Game {
     ui.lowAir(swim && P.breath < 0.3 ? (0.3 - P.breath) * 2.5 : 0);
     if (swim && P.breath < 0.3 && P.breath > 0) ui.prompt(P.entangled ? 'Tap Space to break free' : 'Low on air. Surface to breathe');
     else if (!P.entangled && ui.promptText && ui.promptText.startsWith('Low on air')) ui.prompt('');
-    if (P.mode === 'land' || this.chapterIndex <= 1 || this.chapterIndex === 7) ui.setZone('Moonlit beach');
+    if (P.mode === 'land' || this.chapterIndex <= 1 || this.chapterIndex === 7) ui.setZone('Casey Key Beach');
     else {
       const zi = zoneIndexAt(P.pos.z, P.pos.y);
       ui.setZone(`${ZONES[zi].name}  ·  ${Math.round(Math.max(0, -P.pos.y) * 0.9)} m`);
     }
-    ui.setShells(this.sys.shells ? this.shells.collected : 0, this.sys.shells ? this.shells.total : 0);
+    ui.setShells(this.sys.shells ? `Shark teeth ${this.shells.teeth}  ·  Sea glass ${this.shells.glass}` : '');
   }
 }
 

@@ -5,6 +5,7 @@ import { std } from '../core/shared.js';
 import { groundHeight } from '../world/terrain.js';
 import { rand, clamp, wrapAngle, damp, dampAngle } from '../core/util.js';
 
+const _cv = new THREE.Vector3();
 const NI = (g) => { const n = g.index ? g.toNonIndexed() : g; if (n.attributes.uv) n.deleteAttribute('uv'); return n; };
 
 function finGeo(pts) {
@@ -111,7 +112,15 @@ export class Shark {
     const hidden = player.hidden ? 0.45 : 1;
     let desiredSpeed = T.speed * 0.45;
     let aim = this.target;
-    if (this.state === 'patrol') {
+    if (this.state === 'circle') {
+      // circling above her, waiting for her to rise
+      this.circle.t -= dt;
+      this.circleA = (this.circleA || 0) + dt * 0.45;
+      aim = _cv.set(player.pos.x + Math.cos(this.circleA) * 15, Math.min(-7, player.pos.y + 17), player.pos.z + Math.sin(this.circleA) * 15);
+      desiredSpeed = T.speed * 0.75;
+      if (vulnerable && player.pos.y > aim.y - 8 && dist < 45) { this.state = 'charge'; this.stateT = 0; this.circle = null; }
+      else if (this.circle.t <= 0 || !active) { this.state = 'retreat'; this.stateT = 0; this.circle = null; }
+    } else if (this.state === 'patrol') {
       if (this.pos.distanceTo(this.target) < 4 || this.stateT > 20) { this.pickWaypoint(); this.stateT = 0; }
       if (vulnerable && this.cool <= 0 && dist < T.detect * hidden) { this.state = 'stalk'; this.stateT = 0; }
     } else if (this.state === 'stalk') {

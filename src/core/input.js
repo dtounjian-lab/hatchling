@@ -12,6 +12,7 @@ export class Input {
     this.onLockChange = null;
 
     window.addEventListener('keydown', (e) => {
+      if (e.target && e.target.tagName === 'INPUT') return;
       const k = e.code;
       if (['Space', 'ArrowUp', 'ArrowDown', 'ControlLeft', 'ControlRight', 'Tab'].includes(k)) e.preventDefault();
       if (!this.keys.has(k)) this.pressed.add(k);

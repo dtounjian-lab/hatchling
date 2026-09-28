@@ -18,11 +18,11 @@ export const WORLD = {
 };
 
 export const ZONES = [
-  { id: 'shore', name: 'The Shallows', z0: 1e9, z1: -80 },
-  { id: 'reef', name: 'Sunlit Reef', z0: -80, z1: -420 },
-  { id: 'kelp', name: 'Kelp Forest', z0: -420, z1: -720 },
-  { id: 'open', name: 'Open Ocean', z0: -720, z1: -1050 },
-  { id: 'deep', name: 'The Deep', z0: -1050, z1: -1e9 },
+  { id: 'shore', name: 'Casey Key Shallows', z0: 1e9, z1: -80 },
+  { id: 'reef', name: 'Casey Key Reef', z0: -80, z1: -420 },
+  { id: 'kelp', name: 'The Sargassum Line', z0: -420, z1: -720 },
+  { id: 'open', name: 'The Open Gulf', z0: -720, z1: -1050 },
+  { id: 'deep', name: 'The Florida Escarpment', z0: -1050, z1: -1e9 },
 ];
 
 export function zoneIndexAt(z, y = 0) {
@@ -84,7 +84,9 @@ export function groundHeight(x, z) {
   h -= 0.22 * Math.exp(-d2 / 2.2) - 0.06 * Math.exp(-Math.pow(Math.sqrt(d2) - 1.9, 2) / 0.5);
   // side walls underwater
   const ax = Math.abs(x);
-  h += smoothstep(170, 270, ax) * (z < -10 ? 30 : 6);
+  const wall = smoothstep(170, 270, ax);
+  if (z < -10) h = Math.min(h + wall * 30, Math.max(h, -4.5)); // rise, but never break the surface
+  else h += wall * 6;
   return h;
 }
 
@@ -132,7 +134,7 @@ export function createTerrain(scene) {
         c *= 0.93 + 0.1 * n2;
         float fine = vnoise(wp.xz * 7.0) * 0.6 + vnoise(wp.xz * 29.0) * 0.4;
         c *= 0.9 + 0.16 * fine;
-        float grain = step(0.965, hash12(floor(wp.xz * 60.0)));
+        float grain = step(0.975, hash12(floor(wp.xz * 60.0))) * smoothstep(0.42, 0.15, length(fract(wp.xz * 60.0) - 0.5));
         c += grain * 0.22 * smoothstep(0.0, 1.0, wp.y) * smoothstep(9.0, 1.5, length(cameraPosition - wp));
         // wrack line of dark seaweed
         c = mix(c, vec3(0.2, 0.18, 0.12), smoothstep(0.72, 0.8, vnoise(wp.xz * vec2(0.6, 2.2))) * smoothstep(8.0, 11.0, z) * (1.0 - smoothstep(13.0, 16.0, z)) * 0.8);
