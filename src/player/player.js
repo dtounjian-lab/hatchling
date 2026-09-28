@@ -69,7 +69,7 @@ export class Player {
   get turnRate() { return lerp(3.0, 1.8, this.growth) * this.species.stats.agility * (this.eggs ? 0.9 : 1); }
   get breathCap() { return lerp(40, 115, this.growth) * this.species.stats.dive * 10; }
   get maxHealth() { return 100 * this.species.stats.health; }
-  get landMax() { return lerp(2.5, 1.7, this.growth) * Math.sqrt(this.species.stats.speed) * (this.eggs ? 0.85 : 1); }
+  get landMax() { return lerp(3.1, 1.7, this.growth) * Math.sqrt(this.species.stats.speed) * (this.eggs ? 0.85 : 1); }
 
   forward(out = new THREE.Vector3()) {
     const cp = Math.cos(this.pitch);
@@ -159,10 +159,10 @@ export class Player {
       const tr = lerp(5.0, 2.4, this.growth);
       this.yaw += clamp(diff, -tr * dt, tr * dt);
       let factor = 1;
-      if (I.sprint && this.stamina > 0.05) { factor = 1.6; this.stamina = Math.max(0, this.stamina - dt / 1.8); }
+      if (I.sprint && this.stamina > 0.05) { factor = 1.5; this.stamina = Math.max(0, this.stamina - dt / 2.8); }
       target = this.landMax * factor * Math.max(0.25, Math.cos(diff));
     }
-    if (!(I.sprint && len > 0.01)) this.stamina = Math.min(1, this.stamina + dt / 3.2);
+    if (!(I.sprint && len > 0.01)) this.stamina = Math.min(1, this.stamina + dt / 2.5);
     this.landSpeed = damp(this.landSpeed, target, 7, dt);
     const sp = this.landSpeed;
     this.pos.x += Math.sin(this.yaw) * sp * dt + this.landDrift.x * dt;

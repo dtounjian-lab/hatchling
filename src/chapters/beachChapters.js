@@ -216,7 +216,7 @@ export class Run extends Chapter {
     setTimeout(() => { G.stats.siblingsTotal = Math.max(G.stats.siblingsTotal || 0, G.crowd.activeCount); }, 2500);
     G.hud({ meters: 'stamina', growth: false, diet: false });
     G.ui.setObjective('Reach the Gulf. Head for the moonlit surf.');
-    G.ui.tips('<b>W A S D</b> crawl<br><b>Mouse</b> look around<br><b>Shift</b> scramble<br>Watch for shadows on the sand<br>Follow the moon, not the porch lights');
+    G.ui.tips('<b>W A S D</b> crawl<br><b>Mouse</b> look around<br><b>Shift</b> scramble<br>Watch for gull shadows on the sand<br>Grabbed? Tap <b>Space</b> fast<br>Follow the moon, not the porch lights');
     for (const l of G.beach.lures) G.beach.setLure(l, true);
     this.lureWarned = false;
     this.lightsOff = 0;
@@ -230,7 +230,7 @@ export class Run extends Chapter {
 
   buildTargets() {
     const G = this.game, P = G.player;
-    const T = [{ pos: P.pos, vel: P.vel, isPlayer: true, alive: () => this.ready && P.mode === 'land' && !this.caughtLock }];
+    const T = [{ pos: P.pos, vel: P.vel, isPlayer: true, alive: () => this.ready && P.mode === 'land' && !this.caughtLock && !this.grab }];
     for (const a of G.crowd.agents) {
       if (a.active && (a.state === 'run')) T.push({ pos: a.pos, vel: a.vel, agent: a, alive: () => a.active && a.state === 'run' });
     }
@@ -243,8 +243,8 @@ export class Run extends Chapter {
     for (const a of G.crowd.agents) if (a.active) updateRunner(a, dt, G.time, G.obstacles);
     const targets = this.buildTargets();
     G.beachLife.update(dt, G.time, targets, {
-      onCatch: (t, by) => {
-        if (t.isPlayer) this.caught(by);
+      onCatch: (t, by, from) => {
+        if (t.isPlayer) { if (by === 'human') this.closeCall(from); else this.grabbed(by); }
         else if (by !== 'human' && t.agent) { t.agent.state = 'taken'; G.stats.siblingsLost++; }
       },
       onThud: (p, s) => {
@@ -255,10 +255,12 @@ export class Run extends Chapter {
       },
       onGullCry: (p) => G.audio.gull(clamp(1.2 - p.distanceTo(P.pos) / 40, 0.2, 1)),
       onCrab: () => G.audio.crab(),
+      onGullTarget: () => { G.ui.toast('A gull is diving at you. Move!', 'bad'); },
     }, P);
+    this.updateGrab(dt);
     // porch lights on Casey Key pull hatchlings inland, until neighbors switch them off
     if (this.ready) {
-      const offAt = [24, 46];
+      const offAt = [12, 26];
       if (this.lightsOff < 2 && this.t > offAt[this.lightsOff]) {
         const l = G.beach.lures.find((x) => x.on);
         if (l) { G.beach.setLure(l, false); G.ui.toast('A neighbor switched off a porch light. Thank you.', 'good'); }
@@ -269,26 +271,84 @@ export class Run extends Chapter {
         const dx = l.pos.x - P.pos.x, dz = l.pos.z - P.pos.z;
         const d = Math.hypot(dx, dz);
         if (P.pos.z > 14 && d < 70) {
-          const k = (1 - d / 70) * 0.9;
+          const k = (1 - d / 70) * 0.45;
           P.landDrift.x += (dx / d) * k; P.landDrift.z += (dz / d) * k;
           if (!this.lureWarned && k > 0.25) { this.lureWarned = true; G.ui.toast('Porch lights pull you inland. Turn toward the moon.', 'meh'); }
         }
         for (const a of G.crowd.agents) {
           if (!a.active || a.state !== 'run' || a.pos.z < 16) continue;
-          if (Math.abs(a.pos.x - l.pos.x) < 22 && Math.random() < dt * 0.05) {
+          if (Math.abs(a.pos.x - l.pos.x) < 22 && Math.random() < dt * 0.03) {
             a.state = 'lured'; a.data.lure = l.pos; G.stats.siblingsLost++;
           }
         }
       }
     }
-    for (const [i, cz] of [[1, 40], [2, 22]]) {
-      if (P.pos.z < cz && this.checkpoint.z > cz + 1) { this.checkpoint.set(P.pos.x, 0, cz + 1); G.ui.toast('Keep going', 'meh'); }
+    for (const cz of [48, 38, 28, 18, 9]) {
+      if (P.pos.z < cz && this.checkpoint.z > cz + 1) { this.checkpoint.set(P.pos.x, 0, cz + 1); if (cz === 28) G.ui.toast('Halfway there. Keep going!', 'good'); }
     }
     // the sea draws her in
     if (P.pos.z < 0.6 && !this.caughtLock) {
       G.stats.siblingsSaved = G.crowd.agents.filter((a) => a.data.reached || (a.active && a.state === 'run')).length;
       G.goto(2);
     }
+  }
+
+  // a gull or crab has her: tap to wriggle free before she is carried off
+  grabbed(by) {
+    const G = this.game, P = G.player;
+    if (this.grab || this.caughtLock) return;
+    this.grab = { by, t: 0, taps: 0 };
+    P.control = false;
+    P.landSpeed = 0;
+    G.audio.hurt();
+    G.ui.hurtFlash(0.5);
+    G.ui.prompt(by === 'gull' ? 'A gull has you! Tap Space to wriggle free' : 'A crab has you! Tap Space to wriggle free');
+  }
+
+  updateGrab(dt) {
+    const G = this.game, P = G.player, gr = this.grab;
+    if (!gr) return;
+    gr.t += dt;
+    P.stroke += dt * 4;
+    P.amp = 1;
+    P.roll = Math.sin(gr.t * 30) * 0.25;
+    G.rig.shake(0.05);
+    if (G.input.action) {
+      gr.taps++;
+      G.audio.chirp();
+      G.particles.sand.burst(P.pos, 6, 1.4, 0.5, 0.04, null, 1);
+    }
+    G.ui.hold(Math.min(1, gr.taps / 5));
+    if (gr.taps >= 5) {
+      this.grab = null;
+      G.beachLife.release();
+      P.control = true;
+      P.invuln = 2.5;
+      P.roll = 0;
+      G.ui.prompt(''); G.ui.hold(null);
+      G.stats.closeCalls = (G.stats.closeCalls || 0) + 1;
+      G.ui.toast('You wriggled free!', 'good');
+    } else if (gr.t > 2.8) {
+      const by = gr.by;
+      this.grab = null;
+      G.ui.prompt(''); G.ui.hold(null);
+      this.caught(by);
+    }
+  }
+
+  // a huge foot lands right beside her: a scare and a tumble, not the end
+  closeCall(from) {
+    const G = this.game, P = G.player;
+    if (P.invuln > 0 || this.grab) return;
+    const away = P.pos.clone().sub(from || P.pos); away.y = 0;
+    if (away.lengthSq() < 1e-4) away.set(1, 0, 0);
+    away.normalize();
+    P.pos.addScaledVector(away, 0.6);
+    P.invuln = 1.5;
+    P.landSpeed = 0;
+    G.rig.shake(0.4);
+    G.ui.hurtFlash(0.35);
+    G.ui.toast('Whoa! Nearly squashed', 'meh');
   }
 
   async caught(by) {
@@ -311,7 +371,7 @@ export class Run extends Chapter {
     G.rig.snap(P);
     await G.sleep(0.3);
     G.ui.fade(0, 700);
-    G.ui.toast('Try again. Watch the shadows.', 'meh');
+    G.ui.toast('Try again. Tap fast when something grabs you.', 'meh');
     P.control = true;
     this.caughtLock = false;
   }

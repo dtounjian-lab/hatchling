@@ -256,6 +256,12 @@ export class BeachLife {
 
   setVisible(v) { this.group.visible = v; }
 
+  // let go of the player (she wriggled free)
+  release() {
+    for (const g of this.gulls) if (g.carry && g.carry.isPlayer) g.carry = null;
+    for (const c of this.crabs) if (c.carry && c.carry.isPlayer) { c.carry = null; c.state = 'return'; c.t = 0; }
+  }
+
   reset() {
     for (const g of this.gulls) { g.state = 'circle'; g.cool = rand(3, 6); g.target = null; if (g.carry) g.carry = null; }
     for (const c of this.crabs) { c.state = 'idle'; c.pos.copy(c.home); c.target = null; c.carry = null; }
@@ -280,8 +286,8 @@ export class BeachLife {
           // prefer the player a third of the time, otherwise a sibling
           const cand = live.filter((t) => Math.abs(t.pos.z - g.center.z) < 30);
           const pl = cand.find((t) => t.isPlayer);
-          const tgt = pl && Math.random() < 0.4 ? pl : pick(cand.length ? cand : live);
-          if (tgt) { g.target = tgt; g.state = 'windup'; g.t = 0; ev.onGullCry && ev.onGullCry(g.pos); }
+          const tgt = pl && Math.random() < 0.28 ? pl : pick(cand.length ? cand : live);
+          if (tgt) { g.target = tgt; g.state = 'windup'; g.t = 0; ev.onGullCry && ev.onGullCry(g.pos); if (tgt.isPlayer && ev.onGullTarget) ev.onGullTarget(); }
           else g.cool = 2;
         }
       } else if (g.state === 'windup') {
@@ -292,13 +298,13 @@ export class BeachLife {
         const hover = g.strike.clone().add(new THREE.Vector3(0, 9, -6));
         g.pos.lerp(hover, 1 - Math.exp(-2.2 * dt));
         flapSpeed = 9; flapAmp = 0.8;
-        const k = Math.min(1, g.t / 1.4);
+        const k = Math.min(1, g.t / 1.8);
         g.tele.visible = true;
         g.tele.position.set(g.strike.x, g.strike.y + 0.05, g.strike.z);
         g.tele.scale.setScalar(lerp(3.2, 1.6, k));
         g.tele.material.uniforms.uA.value = 0.25 + 0.45 * k;
         g.tele.material.uniforms.uRing.value = 1;
-        if (g.t > 1.4 || !g.target.alive()) { g.state = g.target.alive() ? 'dive' : 'rise'; g.t = 0; g.from = g.pos.clone(); }
+        if (g.t > 1.8 || !g.target.alive()) { g.state = g.target.alive() ? 'dive' : 'rise'; g.t = 0; g.from = g.pos.clone(); }
       } else if (g.state === 'dive') {
         const k = Math.min(1, g.t / 0.55);
         g.pos.lerpVectors(g.from, g.strike.clone().add(new THREE.Vector3(0, 0.6, 0)), k * k);
@@ -308,9 +314,9 @@ export class BeachLife {
           const tp = g.target.pos;
           const dx = tp.x - g.strike.x, dz = tp.z - g.strike.z;
           const lucky = !g.target.isPlayer && Math.random() < 0.55;
-          if (g.target.alive() && !lucky && dx * dx + dz * dz < 0.85 * 0.85 && !(g.target.isPlayer && player.invuln > 0)) {
+          if (g.target.alive() && !lucky && dx * dx + dz * dz < (g.target.isPlayer ? 0.7 : 0.85) ** 2 && !(g.target.isPlayer && player.invuln > 0)) {
             g.carry = g.target;
-            ev.onCatch && ev.onCatch(g.target, 'gull');
+            ev.onCatch && ev.onCatch(g.target, 'gull', g.pos);
           }
           ev.onGullCry && ev.onGullCry(g.pos);
           g.state = 'rise'; g.t = 0; g.tele.visible = false;
@@ -321,7 +327,7 @@ export class BeachLife {
         if (g.carry && g.carry.agent) { g.carry.agent.pos.copy(g.pos).add(new THREE.Vector3(0, -0.5, 1.1)); }
         if (g.t > 2.2) {
           if (g.carry && g.carry.agent) g.carry.agent.active = false;
-          g.carry = null; g.state = 'circle'; g.cool = rand(2.5, 5.5);
+          g.carry = null; g.state = 'circle'; g.cool = rand(4, 7);
         }
       }
       // orientation from motion
@@ -354,7 +360,7 @@ export class BeachLife {
           let best = null, bd = 1e9;
           for (const t of live) {
             const d = t.pos.distanceToSquared(c.pos);
-            const R = t.isPlayer ? 5.2 : 2.6;
+            const R = t.isPlayer ? 4.2 : 2.6;
             if (d < R * R && d < bd && !(t.isPlayer && player.invuln > 0)) { bd = d; best = t; }
           }
           if (best) { c.target = best; c.lucky = !best.isPlayer && Math.random() < 0.5; c.state = 'charge'; c.t = 0; ev.onCrab && ev.onCrab(c.pos); }
@@ -363,15 +369,15 @@ export class BeachLife {
         const tp = c.target.pos;
         const dx = tp.x - c.pos.x, dz = tp.z - c.pos.z;
         const d = Math.hypot(dx, dz);
-        speed = 3.7; amp = 1;
+        speed = c.target.isPlayer ? 3.0 : 3.4; amp = 1;
         // body sideways to motion: crab faces 90 degrees off travel direction
         c.yaw = dampAngle(c.yaw, Math.atan2(dx, dz) + Math.PI / 2, 6, dt);
         if (d > 0.01) { c.pos.x += (dx / d) * speed * dt; c.pos.z += (dz / d) * speed * dt; }
         if (d < 0.45 && c.target.alive() && !(c.target.isPlayer && player.invuln > 0) && !c.lucky) {
           c.carry = c.target;
-          ev.onCatch && ev.onCatch(c.target, 'crab');
+          ev.onCatch && ev.onCatch(c.target, 'crab', c.pos);
           c.state = 'return'; c.t = 0;
-        } else if (c.t > 1.9 || !c.target.alive()) { c.state = 'return'; c.t = 0; }
+        } else if (c.t > 1.5 || !c.target.alive()) { c.state = 'return'; c.t = 0; }
       } else if (c.state === 'return') {
         const dx = c.home.x - c.pos.x, dz = c.home.z - c.pos.z;
         const d = Math.hypot(dx, dz);
@@ -382,7 +388,7 @@ export class BeachLife {
         if (d < 0.2) {
           if (c.carry && c.carry.agent) c.carry.agent.active = false;
           c.carry = null;
-          if (c.t > 2.5) { c.state = 'idle'; c.t = 0; }
+          if (c.t > 3.2) { c.state = 'idle'; c.t = 0; }
         }
       }
       c.ph += dt * (speed * 5 + 1);
@@ -428,7 +434,7 @@ export class BeachLife {
           ev.onThud && ev.onThud(fp, 1);
           for (const t of live) {
             const dx = t.pos.x - fp.x, dz = t.pos.z - (fp.z);
-            if (dx * dx + dz * dz < 0.95 * 0.95 && !(t.isPlayer && player.invuln > 0)) ev.onCatch && ev.onCatch(t, 'human');
+            if (dx * dx + dz * dz < 0.95 * 0.95 && !(t.isPlayer && player.invuln > 0)) ev.onCatch && ev.onCatch(t, 'human', fp);
           }
         }
         lg.prevC = c;

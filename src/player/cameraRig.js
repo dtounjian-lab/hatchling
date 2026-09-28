@@ -35,8 +35,8 @@ export class CameraRig {
     const des = (this.desired ||= new THREE.Vector3());
     const dl = (this.desiredLook ||= new THREE.Vector3());
     if (player.mode === 'land' || player.mode === 'locked') {
-      const dist = lerp(1.9, 6.2, g) * this.distScale;
-      const el = clamp(0.24 - player.aimPitch * 0.75, -0.02, 0.95);
+      const dist = lerp(2.4, 6.2, g) * this.distScale;
+      const el = clamp(0.32 - player.aimPitch * 0.75, -0.02, 0.95);
       const yaw = player.aimYaw;
       _t.copy(player.pos); _t.y += size * 0.35;
       des.set(_t.x - Math.sin(yaw) * Math.cos(el) * dist, _t.y + Math.sin(el) * dist + size * 0.3, _t.z - Math.cos(yaw) * Math.cos(el) * dist);
