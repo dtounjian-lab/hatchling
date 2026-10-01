@@ -5,6 +5,7 @@ import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferG
 import { std } from '../core/shared.js';
 import { groundHeight } from './terrain.js';
 import { chunkify, cullChunks } from './chunks.js';
+import { addCollider } from './colliders.js';
 import { rand, pick, fbm2, mulberry32 } from '../core/util.js';
 
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3();
@@ -139,6 +140,7 @@ function scatter(mesh, count, sampler, colors, cfg = {}) {
     _e.set((Math.random() - 0.5) * (cfg.tilt ?? 0.2), Math.random() * Math.PI * 2, (Math.random() - 0.5) * (cfg.tilt ?? 0.2));
     _q.setFromEuler(_e);
     const sy = sc * (cfg.stretch ? rand(0.8, 1.4) : 1);
+    if (cfg.collide && sc * cfg.collide > 0.6) addCollider(x, y, z, sc * cfg.collide, cfg.squash ?? 1);
     _s.set(sc, sy, sc);
     _m.compose(_p, _q, _s);
     mesh.setMatrixAt(n, _m);
@@ -268,10 +270,10 @@ export function createReef(scene) {
 
   const brainGeo = new THREE.SphereGeometry(1, 22, 11, 0, Math.PI * 2, 0, Math.PI * 0.55);
   brainGeo.scale(1, 0.7, 1);
-  scatter(add(brainGeo, brainMat, 380), 380, reefSampler(0.5, 1.8), ['#b8a060', '#a3985c', '#c2a57a', '#8f9a62', '#9a8a5a'], { sink: 0.15 });
+  scatter(add(brainGeo, brainMat, 380), 380, reefSampler(0.5, 1.8), ['#b8a060', '#a3985c', '#c2a57a', '#8f9a62', '#9a8a5a'], { collide: 0.85, squash: 0.7, sink: 0.15 });
   const boulderGeo = new THREE.SphereGeometry(1, 22, 11, 0, Math.PI * 2, 0, Math.PI * 0.6);
   boulderGeo.scale(1, 0.85, 1);
-  scatter(add(boulderGeo, boulderMat, 220), 220, reefSampler(0.7, 2.4), ['#9c8f5e', '#a88d6a', '#8a8a66', '#b59a72', '#7f8a70'], { sink: 0.2, tilt: 0.3 });
+  scatter(add(boulderGeo, boulderMat, 220), 220, reefSampler(0.7, 2.4), ['#9c8f5e', '#a88d6a', '#8a8a66', '#b59a72', '#7f8a70'], { collide: 0.85, squash: 0.85, sink: 0.2, tilt: 0.3 });
   const barrelPts = [];
   for (let i = 0; i <= 12; i++) { const t = i / 12; barrelPts.push(new THREE.Vector2(0.35 + Math.sin(t * 2.4) * 0.35 + (i === 12 ? 0.05 : 0), t * 1.4)); }
   for (let i = 12; i >= 1; i--) { const t = i / 12; barrelPts.push(new THREE.Vector2(0.25 + Math.sin(t * 2.4) * 0.3, t * 1.36)); }
@@ -314,7 +316,7 @@ export function createReef(scene) {
     { n: 200, z: [-1370, -1055], x: 200, s: [3.0, 12.0], c: ['#23252c', '#2c2e36', '#1d1f25'] },
   ];
   for (const [i, rz] of rockZones.entries()) {
-    scatter(add(rocks[i % 2], rockMat, rz.n), rz.n, () => [rand(-rz.x, rz.x), rand(rz.z[0], rz.z[1]), rand(rz.s[0], rz.s[1])], rz.c, { sink: 0.35, tilt: 0.5 });
+    scatter(add(rocks[i % 2], rockMat, rz.n), rz.n, () => [rand(-rz.x, rz.x), rand(rz.z[0], rz.z[1]), rand(rz.s[0], rz.s[1])], rz.c, { collide: 0.85, squash: 0.6, sink: 0.35, tilt: 0.5 });
   }
 
   const chunks = [];

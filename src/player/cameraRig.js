@@ -2,6 +2,7 @@
 // terrain and surface avoidance, footstep shake and cinematic overrides.
 import * as THREE from 'three';
 import { groundHeight } from '../world/terrain.js';
+import { resolve as resolveColliders } from '../world/colliders.js';
 import { surfaceHeight } from '../world/water.js';
 import { clamp, lerp, damp, dampV3, smoothstep, noise2 } from '../core/util.js';
 
@@ -92,6 +93,8 @@ export class CameraRig {
       if (playerUnder && this.pos.y > sy - 0.3) this.pos.y = sy - 0.3;
       if (player.mode === 'land' && this.pos.y < sy + 0.3 && this.pos.z < 6) this.pos.y = sy + 0.3;
     }
+    // keep the lens out of rocks and coral boulders
+    if (this.pos.y < sy) resolveColliders(this.pos, 0.3 + player.size * 0.1);
     // avoid sitting exactly on the waterline
     if (Math.abs(this.pos.y - sy) < 0.12) this.pos.y = sy + (this.pos.y > sy ? 0.12 : -0.12);
 

@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { std } from '../core/shared.js';
 import { groundHeight, zoneIndexAt } from '../world/terrain.js';
+import { resolve as resolveColliders } from '../world/colliders.js';
 import { rand, pick, TAU } from '../core/util.js';
 
 const NI = (g) => { const n = g.index ? g.toNonIndexed() : g; if (n.attributes.uv) n.deleteAttribute('uv'); return n; };
@@ -244,6 +245,8 @@ export class Food {
         }
       }
     }
+    // nothing edible hides inside a rock
+    for (const it of this.items) { resolveColliders(it.home, it.size * 0.4); it.pos.copy(it.home); }
     for (const m of Object.values(this.meshes)) m.instanceColor.needsUpdate = true;
     // twinkles that mark food in her diet, so it is easy to spot
     this.glintMax = 72;
@@ -374,7 +377,9 @@ export class Food {
       else if (cfg.place === 'floor') y = g;
       else if (cfg.place === 'low') y = g + rand(0.4, 2.2) * Z.sizeK;
       else y = Math.min(-1.2, Math.max(g + 2, pp.y + rand(-5, 5)));
-      it.home.set(x, y, z); it.pos.copy(it.home);
+      it.home.set(x, y, z);
+      resolveColliders(it.home, 0.3);
+      it.pos.copy(it.home);
       it.zone = zoneId;
       it.size = rand(0.28, 0.45) * Z.sizeK * (it.type === 'jelly' ? 1.4 : 1) * (it.type === 'seagrass' ? 1.5 : 1);
       it.onFloor = cfg.place === 'floor' && y === g;

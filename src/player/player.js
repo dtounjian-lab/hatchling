@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { TurtleModel } from './turtleModel.js';
 import { groundHeight } from '../world/terrain.js';
+import { resolve as resolveColliders } from '../world/colliders.js';
 import { surfaceHeight } from '../world/water.js';
 import { clamp, lerp, damp, wrapAngle, TAU, rand, smoothstep } from '../core/util.js';
 
@@ -283,6 +284,12 @@ export class Player {
       this.pos.y = fl;
       if (this.vel.y < 0) this.vel.y *= -0.1;
       this.vel.multiplyScalar(1 - 1.5 * dt);
+    }
+    // slide around rocks and coral boulders
+    const hit = resolveColliders(this.pos, size * 0.35);
+    if (hit) {
+      const vn = this.vel.x * hit.x + this.vel.y * hit.y + this.vel.z * hit.z;
+      if (vn < 0) { this.vel.x -= hit.x * vn; this.vel.y -= hit.y * vn; this.vel.z -= hit.z * vn; }
     }
     // depth limit (size-gated pressure)
     if (this.pos.y < this.depthLimit) {
