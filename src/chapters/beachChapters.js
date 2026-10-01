@@ -1,7 +1,9 @@
 // I Hatching, II The Run to the Sea, VIII Nesting.
 import * as THREE from 'three';
 import { Chapter, updateRunner, spawnSibling } from './base.js';
+import { std } from '../core/shared.js';
 import { groundHeight, WORLD } from '../world/terrain.js';
+import { surfaceHeight, swashFront } from '../world/water.js';
 import { rand, clamp, lerp, smoothstep, TAU } from '../core/util.js';
 import { SPECIES } from '../species.js';
 
@@ -9,22 +11,49 @@ const NEST = WORLD.nest;
 const nestY = () => groundHeight(NEST.x, NEST.z);
 
 // ============================================================== I Hatching
-function eggPiece(r, top) {
-  // a jagged half shell: the cap flies off, the cup stays in the sand
-  const g = top
-    ? new THREE.SphereGeometry(r, 22, 10, 0, TAU, 0, Math.PI * 0.46)
-    : new THREE.SphereGeometry(r, 22, 12, 0, TAU, Math.PI * 0.46, Math.PI * 0.54);
-  const p = g.attributes.position;
-  for (let i = 0; i < p.count; i++) {
-    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
-    const edge = Math.abs(y - Math.cos(Math.PI * 0.46) * r) < r * 0.02;
-    if (edge) p.setY(i, y + Math.sin(Math.atan2(z, x) * 9) * r * 0.12);
-    p.setY(i, p.getY(i) * 1.08);
-  }
-  g.computeVertexNormals();
-  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0xcdbfa3, roughness: 0.8, side: THREE.DoubleSide }));
+// Sea turtle eggs are soft and leathery. The hatchling slits the shell with its
+// egg tooth, pokes its head out, pushes free as the egg crumples, rests, and then
+// climbs with its siblings toward the surface of the sand.
+function leatheryEgg(r) {
+  const g = new THREE.SphereGeometry(r, 48, 32);
+  g.scale(1, 1.08, 1);
+  const mat = std({ color: 0xb9ad94, roughness: 0.9, side: THREE.DoubleSide }, {
+    key: 'playerEgg', caustics: 0, rim: 0.15,
+    uniforms: { uSlit: { value: 0 }, uDent: { value: 0 }, uR: { value: r } },
+    vertexHead: 'uniform float uDent; uniform float uR;',
+    vertexTransform: /* glsl */ `
+      {
+        vec3 u = position / uR;
+        float n = vnoise(u.xz * 3.1 + u.y * 2.3);
+        float d = uDent * (0.45 + 0.55 * n);
+        // collapse from the top down, wrinkling as it deflates
+        float top = smoothstep(-0.7, 1.0, u.y);
+        transformed *= 1.0 - d * top * 0.55;
+        transformed.y -= uDent * uR * 0.55 * (u.y + 1.0) * 0.5;
+        transformed.xz *= 1.0 + uDent * 0.22 * (1.0 - top);
+        transformed += normal * sin(u.x * 18.0 + u.y * 11.0) * uDent * uR * 0.03;
+      }`,
+    fragHead: 'uniform float uSlit; uniform float uR;',
+    fragDiffuse: /* glsl */ `
+      {
+        vec3 u = normalize(vObj);
+        // the tear opens at the top front, where the egg tooth cuts
+        vec3 c = normalize(vec3(0.0, 0.62, 0.78));
+        float ang = acos(clamp(dot(u, c), -1.0, 1.0));
+        float jag = vnoise(vec2(atan(u.x, u.z) * 6.0, u.y * 9.0)) * 0.12;
+        float open = uSlit * 0.95;
+        if (ang < open * (0.8 + jag * 3.0) - 0.02) discard;
+        float edge = 1.0 - smoothstep(0.0, 0.08, ang - open * (0.8 + jag * 3.0));
+        vec3 shell = diffuseColor.rgb * (0.88 + 0.12 * vnoise(vObj.xy * 120.0));
+        shell = mix(shell, vec3(0.55, 0.48, 0.38), smoothstep(-0.1, -0.8, u.y) * 0.8);
+        shell = mix(shell, vec3(0.45, 0.36, 0.3), edge * step(0.01, uSlit));
+        vec3 inner = vec3(0.6, 0.48, 0.42) * 0.55;
+        diffuseColor.rgb = gl_FrontFacing ? shell : inner;
+      }`,
+  });
+  const m = new THREE.Mesh(g, mat);
   m.frustumCulled = false;
-  return m;
+  return { mesh: m, u: mat.userData.uniforms };
 }
 
 export class Hatching extends Chapter {
@@ -41,25 +70,25 @@ export class Hatching extends Chapter {
     G.hud({ meters: false, growth: false, diet: false });
     G.ui.setObjective('');
     G.beach.pit.visible = false;
-    // eggs in the nest hollow
+    // the clutch in the nest hollow
     G.eggs.clear();
     const c = new THREE.Vector3(NEST.x, nestY(), NEST.z);
     this.sibEggs = [];
+    // siblings fill the back and sides of the hollow, leaving her egg in clear view
     for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * TAU * 1.9 + rand(-0.2, 0.2);
-      const r = 0.2 + (i / 12) * 0.55;
-      const p = new THREE.Vector3(c.x + Math.cos(a) * r, 0, c.z + 0.1 + Math.sin(a) * r);
-      p.y = groundHeight(p.x, p.z) + 0.1 + (i < 3 ? 0.1 : 0);
-      this.sibEggs.push(G.eggs.add(p, 0.15));
+      const a = rand(-0.15, Math.PI + 0.15);
+      const r = 0.26 + (i / 12) * 0.5;
+      const p = new THREE.Vector3(c.x + Math.cos(a) * r * 1.2, 0, c.z + 0.05 + Math.sin(a) * r);
+      p.y = groundHeight(p.x, p.z) + 0.07 + (i < 3 ? 0.08 : 0);
+      this.sibEggs.push(G.eggs.add(p, 0.14));
     }
     const ep = new THREE.Vector3(c.x, 0, c.z - 0.42);
-    ep.y = groundHeight(ep.x, ep.z) + 0.15;
-    this.egg = G.eggs.add(ep, 0.17);
+    ep.y = groundHeight(ep.x, ep.z) + 0.16;
     this.eggPos = ep.clone();
-    this.cap = eggPiece(0.17, true);
-    this.cup = eggPiece(0.17, false);
-    this.cap.visible = this.cup.visible = false;
-    G.scene.add(this.cap, this.cup);
+    this.egg = leatheryEgg(0.17);
+    this.egg.mesh.position.copy(ep);
+    this.egg.mesh.rotation.y = Math.PI; // the tear faces the sea, where she will head
+    G.scene.add(this.egg.mesh);
     P.placeAt(ep.clone(), Math.PI, 'locked');
     G.eggs.sync(0);
     // opening shot: the moon over the Gulf, then down to the nest
@@ -69,121 +98,139 @@ export class Hatching extends Chapter {
     this.stage = 'intro';
     this.taps = 0;
     this.digTaps = 0;
-    this.pop = 0;
+    this.k = 0; // emergence progress 0..1
+    this.wob = 0;
     G.audio.intensity = 0.3;
     (async () => {
       G.showCard(Hatching.meta);
       await G.sleep(3.6);
-      G.rig.override = { pos: new THREE.Vector3(ep.x + 0.7, ep.y + 0.8, ep.z - 1.2), look: ep.clone().add(new THREE.Vector3(0, 0.02, 0.15)), fov: 48, follow: 0.9, lambda: 3 };
+      // low and close, facing the egg from the seaward side
+      G.rig.override = { pos: new THREE.Vector3(ep.x + 0.3, ep.y + 0.18, ep.z - 0.78), look: ep.clone().add(new THREE.Vector3(0, 0.06, 0)), fov: 46, follow: 0.9, lambda: 3 };
       await G.sleep(3.2);
-      this.stage = 'crack';
-      G.ui.setObjective(`Break free of your shell, ${G.turtleName || 'little one'}`);
+      this.stage = 'pip';
+      G.ui.setObjective(`Cut your way out of the egg, ${G.turtleName || 'little one'}`);
       G.ui.prompt('Tap Space');
     })();
   }
 
-  breakEgg() {
-    const G = this.game, P = G.player;
-    this.stage = 'emerge';
-    this.egg.on = false;
-    const e = this.eggPos;
-    this.cup.visible = true;
-    this.cup.position.copy(e);
-    this.cap.visible = true;
-    this.cap.position.copy(e);
-    this.capVel = new THREE.Vector3(rand(-0.4, 0.4), 1.6, rand(0.3, 0.7));
-    this.capSpin = new THREE.Vector3(rand(-6, 6), rand(-3, 3), rand(-6, 6));
-    G.particles.splash.burst(e.clone().add(new THREE.Vector3(0, 0.12, 0)), 14, 0.9, 0.6, 0.035, new THREE.Color(0.95, 0.93, 0.85), 0.8);
-    P.visible = true;
-    P.placeAt(e.clone(), Math.PI, 'locked');
-    this.pop = 0;
-    G.audio.crack();
-    G.audio.chirp();
-    G.ui.prompt('');
-    G.ui.setObjective('Dig your way out of the nest');
-  }
-
   update(dt) {
     super.update(dt);
-    const G = this.game, P = G.player, I = G.input;
+    const G = this.game, P = G.player, I = G.input, U = this.egg.u;
     G.eggs.sync(G.time);
     for (const e of G.eggs.list) e.wob = Math.max(0, e.wob - dt * 3);
-    if (this.stage === 'crack' && I.action) {
+    this.wob = Math.max(0, this.wob - dt * 3);
+    const em = this.egg.mesh;
+    em.rotation.x = Math.sin(G.time * 31) * 0.1 * this.wob;
+    em.rotation.z = Math.cos(G.time * 27) * 0.1 * this.wob;
+
+    // tapping: the egg tooth cuts, the head pokes out, flippers push
+    if (this.stage === 'pip' && I.action) {
       this.taps++;
-      this.egg.crack = Math.min(1, this.taps / 5);
-      this.egg.wob = 1;
-      G.audio.crack();
+      this.wob = 1;
+      G.audio.dig();
       if (this.taps % 2) G.audio.chirp();
-      G.particles.sand.burst(this.eggPos, 4, 0.8, 0.5, 0.03);
-      if (this.taps >= 5) this.breakEgg();
+      G.particles.sand.burst(this.eggPos, 3, 0.6, 0.5, 0.025);
+      if (this.taps === 3) { P.visible = true; P.lockAnim = 'swim'; G.ui.setObjective('Push free of the shell'); }
+      if (this.taps >= 5) {
+        P.lockAnim = null;
+        this.stage = 'emerge';
+        this.et = 0;
+        G.ui.prompt('');
+        G.audio.chirp();
+      }
     }
-    // the cap tumbles away and settles on the sand
-    if (this.cap && this.cap.visible && this.capVel) {
-      this.capVel.y -= 6 * dt;
-      this.cap.position.addScaledVector(this.capVel, dt);
-      this.cap.rotation.x += this.capSpin.x * dt; this.cap.rotation.z += this.capSpin.z * dt;
-      const gy = groundHeight(this.cap.position.x, this.cap.position.z) + 0.03;
-      if (this.cap.position.y < gy) { this.cap.position.y = gy; this.capVel.set(0, 0, 0); this.capSpin.multiplyScalar(0); this.cap.rotation.x = Math.PI; }
+    const slitT = [0, 0.1, 0.18, 0.28, 0.36, 0.44][Math.min(5, this.taps)];
+    U.uSlit.value += (slitT + (this.stage === 'emerge' || this.stage === 'rest' || this.stage === 'dig' || this.stage === 'out' ? 0.14 : 0) - U.uSlit.value) * Math.min(1, dt * 6);
+
+    if (this.stage === 'emerge') {
+      this.et += dt;
+      this.k = Math.min(1, this.et / 2.2);
+      U.uDent.value = smoothstep(0.15, 1, this.k);
+      if (this.k >= 1) { this.stage = 'rest'; this.rt = 0; G.ui.setObjective('Catch your breath'); }
+    } else if (this.stage === 'rest') {
+      this.rt += dt;
+      if (this.rt > 1.4) { this.stage = 'dig'; G.ui.setObjective('Dig your way out of the nest'); G.ui.prompt('Tap Space to dig'); }
     }
-    if (this.stage === 'emerge' || this.stage === 'dig' || this.stage === 'out') {
-      this.pop += dt;
+
+    if (this.taps >= 3 || this.stage !== 'pip') {
       const e = this.eggPos;
-      const out = Math.min(1, this.pop / 1.4);
-      const wr = this.stage === 'emerge' ? 1 : 0.5;
-      // wriggle up out of the cup, head first, then flop forward onto the sand
-      P.stroke += dt * (this.stage === 'emerge' ? 2.4 : 1.1);
-      P.amp = 0.6 + 0.4 * wr;
-      P.aimYaw = Math.PI + Math.sin(this.pop * 0.9) * 0.25;
-      P.aimPitch = 0.1 + Math.sin(this.pop * 0.7) * 0.08;
+      const fwd = new THREE.Vector3(0, 0, -1);
+      // inside the egg, curled with the head up at the tear; then out onto the sand
+      const k = this.stage === 'pip' ? 0 : this.k;
+      const poke = this.stage === 'pip' ? (this.taps - 2) * 0.012 : 0;
+      const ke = k * k * (3 - 2 * k);
+      const inside = e.clone().addScaledVector(fwd, 0.02 + poke).add(new THREE.Vector3(0, -0.03 + poke * 0.8, 0));
+      const outside = e.clone().addScaledVector(fwd, 0.34);
+      outside.y = groundHeight(outside.x, outside.z) + 0.02;
+      if (this.digTaps === 0) {
+        P.pos.lerpVectors(inside, outside, ke);
+        P.pos.y += Math.sin(ke * Math.PI) * 0.06;
+      } else {
+        const rim = new THREE.Vector3(NEST.x, 0, NEST.z - 1.9);
+        const target = outside.clone().lerp(rim, this.digTaps / 4);
+        target.y = groundHeight(target.x, target.z) + P.size * 0.1;
+        P.pos.lerp(target, 1 - Math.exp(-6 * dt));
+      }
       P.mode = 'locked';
-      P.yaw = Math.PI + Math.sin(this.pop * 7) * 0.12 * (1 - out);
-      const rim = new THREE.Vector3(NEST.x, 0, NEST.z - 1.9);
-      const start = e.clone().add(new THREE.Vector3(0, 0.02, -0.12 * out));
-      const target = start.clone().lerp(rim, this.digTaps / 4);
-      const gy = groundHeight(target.x, target.z) + P.size * 0.1;
-      target.y = this.digTaps === 0 ? lerp(e.y - 0.02, gy, out) + Math.sin(out * Math.PI) * 0.05 : gy;
-      P.pos.lerp(target, 1 - Math.exp(-6 * dt));
-      P.pitch = this.digTaps === 0 ? lerp(0.9, 0.12, out) : 0.18 * (1 - this.digTaps / 4);
-      P.roll = Math.sin(this.pop * 8) * 0.08 * (1 - out * 0.7);
-      P.displayScale = this.digTaps === 0 ? lerp(0.72, 1, out) : 1;
-      G.rig.override.look.lerp(P.pos.clone().add(new THREE.Vector3(0, 0.05, 0)), 1 - Math.exp(-3 * dt));
-      if (this.stage === 'emerge' && out >= 1) { this.stage = 'dig'; G.ui.prompt('Tap Space to dig'); }
+      P.yaw = Math.PI + Math.sin(G.time * 9) * 0.1 * (1 - ke) * (this.stage === 'rest' ? 0 : 1);
+      P.pitch = this.digTaps === 0 ? 0.95 * (1 - ke) + 0.08 : 0.15 * (1 - this.digTaps / 4);
+      P.roll = this.stage === 'emerge' ? Math.sin(G.time * 10) * 0.12 * (1 - ke) : 0;
+      P.displayScale = this.digTaps === 0 ? 0.62 + 0.38 * ke : 1;
+      // flippers flail while pushing free; at rest she breathes and looks around
+      const resting = this.stage === 'rest';
+      P.stroke += dt * (resting ? 0.4 : this.stage === 'emerge' ? 2.6 : this.stage === 'pip' ? 1.8 : 1.1);
+      P.amp = resting ? 0.25 : this.stage === 'pip' ? 0.35 : 1;
+      P.glide = this.stage === 'pip' ? 1 : 0;
+      P.aimYaw = Math.PI + (resting ? Math.sin(this.rt * 2.2) * 0.5 : 0);
+      P.aimPitch = resting ? 0.25 + Math.sin(this.rt * 3) * 0.08 : 0.1;
+      if (this.stage === 'emerge' && Math.random() < dt * 6) G.particles.sand.burst(P.pos, 2, 0.6, 0.4, 0.02);
+      // the camera eases back as she comes out
+      const o = G.rig.override;
+      if (o && this.digTaps === 0) {
+        o.pos.lerp(new THREE.Vector3(e.x + 0.45, e.y + 0.32, e.z - 1.15), 1 - Math.exp(-dt * 0.8 * ke));
+        o.look.lerp(P.pos.clone().add(new THREE.Vector3(0, 0.05, 0)), 1 - Math.exp(-3 * dt));
+      } else if (o) o.look.lerp(P.pos.clone().add(new THREE.Vector3(0, 0.05, 0)), 1 - Math.exp(-3 * dt));
     }
+
     if (this.stage === 'dig' && I.action) {
       this.digTaps++;
       G.audio.dig();
       G.particles.sand.burst(P.pos.clone().add(new THREE.Vector3(0, 0.05, 0.1)), 14, 1.6, 0.8, 0.05, null, 1.2);
       P.stroke += 0.5;
       G.tracks.step(P.pos, P.yaw, P.size, 60, 0.7);
-      // siblings begin to hatch around you
+      if (this.digTaps === 1) G.rig.override.pos.set(this.eggPos.x + 0.7, this.eggPos.y + 0.85, this.eggPos.z - 1.6);
       const n = Math.floor((this.digTaps / 4) * this.sibEggs.length);
-      for (let i = 0; i < n; i++) this.hatchSibling(this.sibEggs[i], rand(200, 900));
+      for (let i = 0; i < n; i++) this.hatchSibling(this.sibEggs[i], rand(0.2, 0.9));
       if (this.digTaps >= 4) {
         this.stage = 'out';
         G.ui.prompt('');
-        for (const e of this.sibEggs) this.hatchSibling(e, rand(300, 1200));
+        for (const e of this.sibEggs) this.hatchSibling(e, rand(0.3, 1.2));
         G.later(1.6, () => G.goto(1));
       }
     }
+    // siblings' eggs deflate as they push out
+    for (const e of this.sibEggs) if (e.hatched && e.on) e.sq = Math.min(1, (e.sq || 0) + dt * 1.6);
     for (const a of G.crowd.agents) if (a.active) updateRunner(a, dt, G.time, G.obstacles);
   }
 
   hatchSibling(e, delay) {
     if (!e.on || e.hatched) return;
     const G = this.game;
-    e.crack = 1; e.wob = 1; e.hatched = true;
-    setTimeout(() => {
-      e.on = false;
-      const a = spawnSibling(G.crowd, G.species, e.pos.clone(), rand(0.3, 2.2));
+    e.wob = 1; e.hatched = true;
+    G.later(delay, () => {
+      const a = spawnSibling(G.crowd, G.species, e.pos.clone(), rand(0.6, 2.2));
       if (a) a.pos.y = groundHeight(a.pos.x, a.pos.z);
-      G.particles.splash.burst(e.pos, 8, 1, 0.5, 0.04, new THREE.Color(0.95, 0.93, 0.85), 0.8);
-    }, delay);
+      G.particles.sand.burst(e.pos, 6, 1, 0.5, 0.03, null, 0.6);
+      G.later(3, () => { e.on = false; });
+    });
   }
 
   exit() {
     const G = this.game;
     G.player.displayScale = 1;
-    setTimeout(() => { G.scene.remove(this.cap, this.cup); }, 20000);
+    G.player.lockAnim = null;
+    const egg = this.egg.mesh;
+    G.sleep(20).then(() => G.scene.remove(egg));
   }
 }
 
@@ -286,8 +333,21 @@ export class Run extends Chapter {
     for (const cz of [48, 38, 28, 18, 9]) {
       if (P.pos.z < cz && this.checkpoint.z > cz + 1) { this.checkpoint.set(P.pos.x, 0, cz + 1); if (cz === 28) G.ui.toast('Halfway there. Keep going!', 'good'); }
     }
-    // the sea draws her in
-    if (P.pos.z < 0.6 && !this.caughtLock) {
+    // the swash: waves run up the sand over her, then drag her back toward the Gulf
+    const wd = surfaceHeight(P.pos.x, P.pos.z, G.time) - groundHeight(P.pos.x, P.pos.z);
+    if (wd > 0.02 && P.mode === 'land' && !this.grab) {
+      const sw = swashFront(P.pos.x, G.time);
+      const k = Math.min(1, wd / 0.1);
+      P.landDrift.z += (sw.up ? 1.4 : -2.4) * k;
+      P.roll = Math.sin(G.time * 9) * 0.12 * k;
+      if (Math.random() < dt * 8 * k) G.particles.splash.spawn(P.pos.x + rand(-0.2, 0.2), P.pos.y + 0.05, P.pos.z + rand(-0.2, 0.2), rand(-0.4, 0.4), rand(0.6, 1.2), rand(-0.4, 0.4), 0.5, rand(0.02, 0.05));
+      if (!this.wetToast) { this.wetToast = true; G.ui.toast('A wave washes over you. Let it carry you out!', 'good'); G.audio.splash(0.3); }
+    }
+    // the sea draws her in once the water is deep enough to swim
+    if (((wd > P.size * 0.3 && P.pos.z < 1.5) || P.pos.z < -3) && !this.caughtLock) {
+      G.splashAt(P.pos, 2);
+      G.audio.splash(0.45);
+      G.particles.bubbles.burst(P.pos, 14, 0.8, 1.2, 0.03);
       G.stats.siblingsSaved = G.crowd.agents.filter((a) => a.data.reached || (a.active && a.state === 'run')).length;
       G.goto(2);
     }

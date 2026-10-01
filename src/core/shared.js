@@ -28,6 +28,18 @@ vec2 voronoi3(vec3 p){ vec3 i = floor(p); vec3 f = fract(p); float f1 = 8., f2 =
   return vec2(sqrt(f1), sqrt(f2)); }
 `;
 
+// Swash: after each surf wave breaks, a thin sheet of water runs up the beach and
+// slides back. x varies the reach so the front is uneven. Returns (front z, phase, uprush).
+export const GLSL_SWASH = /* glsl */ `
+vec3 swashFront(float x, float t){
+  float cyc = (5.2 * t + 2.0) / 30.0;
+  float s = fract(cyc);
+  float R = 6.5 + 2.2 * sin(x * 0.07 + floor(cyc) * 1.7) + 1.2 * sin(x * 0.19);
+  float f = s < 0.32 ? -1.0 + R * sin((s / 0.32) * 1.5707963) : -1.0 + R * (1.0 - smoothstep(0.32, 0.95, s));
+  return vec3(f, s, s < 0.32 ? 1.0 : 0.0);
+}
+`;
+
 export const GLSL_CAUSTIC = /* glsl */ `
 float causticPattern(vec2 p, float t){
   vec2 i = p; float c = 1.0; float inten = .005;

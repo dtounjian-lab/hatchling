@@ -15,7 +15,7 @@ export class Eggs {
     geo.scale(1, 1.08, 1);
     this.crack = new Float32Array(max);
     geo.setAttribute('aCrack', new THREE.InstancedBufferAttribute(this.crack, 1));
-    const mat = std({ color: 0xcdbfa3, roughness: 0.8 }, {
+    const mat = std({ color: 0xb9ad94, roughness: 0.9 }, {
       key: 'egg', caustics: 0, rim: 0.2,
       vertexHead: 'attribute float aCrack; varying float vCrack;',
       vertexTransform: 'vCrack = aCrack;',
@@ -42,7 +42,7 @@ export class Eggs {
   add(pos, r = 0.16) {
     const e = this.list.find((x) => !x.on);
     if (!e) return null;
-    e.on = true; e.pos.copy(pos); e.r = r; e.wob = 0; e.crack = 0;
+    e.on = true; e.pos.copy(pos); e.r = r; e.wob = 0; e.crack = 0; e.sq = 0;
     e.rot.set(rand(-0.3, 0.3), rand(0, TAU), rand(-0.3, 0.3));
     return e;
   }
@@ -50,7 +50,10 @@ export class Eggs {
     for (const e of this.list) {
       if (!e.on) { this.mesh.setMatrixAt(e.i, ZERO); continue; }
       _q.setFromEuler(_e.set(e.rot.x + Math.sin(time * 30) * 0.12 * e.wob, e.rot.y, e.rot.z + Math.cos(time * 27) * 0.12 * e.wob));
-      _m.compose(e.pos, _q, _s.setScalar(e.r));
+      // a hatched egg deflates: leathery shells crumple rather than shatter
+      const sq = e.sq || 0;
+      _p.copy(e.pos); _p.y -= e.r * 0.62 * sq;
+      _m.compose(_p, _q, _s.set(e.r * (1 + 0.3 * sq), e.r * (1 - 0.62 * sq), e.r * (1 + 0.24 * sq)));
       this.mesh.setMatrixAt(e.i, _m);
       this.crack[e.i] = e.crack;
     }

@@ -536,7 +536,7 @@ class Game {
       this.chapter && this.chapter.update(dt);
       P.update(dt, this.input);
     }
-    if (this.keyLight) this.keyLight.intensity = (this.state === 'title' || this.chapterIndex === 0) ? 2.5 : 0;
+    if (this.keyLight) this.keyLight.intensity = this.state === 'title' ? 2.5 : this.chapterIndex === 0 ? 1.1 : 0;
     this.updateWorld(dt);
     this.rig.update(dt, P, this.time);
     this.updateAudio(dt);

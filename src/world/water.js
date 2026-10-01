@@ -3,7 +3,7 @@
 // from above, and a shimmering Snell's window from below. The surf waves are
 // shared with gameplay (they push you), so JS and GLSL use the same formulas.
 import * as THREE from 'three';
-import { U, GLSL_NOISE } from '../core/shared.js';
+import { U, GLSL_NOISE, GLSL_SWASH } from '../core/shared.js';
 import { smoothstep } from '../core/util.js';
 import { groundHeight } from './terrain.js';
 
@@ -28,7 +28,25 @@ export function surfPhase(z, t) {
   const p = (z - WAVE.c * t) / WAVE.L;
   return p - Math.floor(p);
 }
+// swash (must match GLSL_SWASH): front position, cycle phase, uprush flag
+export function swashFront(x, t) {
+  const cyc = (WAVE.c * t + 2) / WAVE.L;
+  const s = cyc - Math.floor(cyc);
+  const R = 6.5 + 2.2 * Math.sin(x * 0.07 + Math.floor(cyc) * 1.7) + 1.2 * Math.sin(x * 0.19);
+  const f = s < 0.32 ? -1 + R * Math.sin((s / 0.32) * Math.PI / 2) : -1 + R * (1 - smoothstep(0.32, 0.95, s));
+  return { f, s, up: s < 0.32 };
+}
+function swashLevel(x, z, t) {
+  if (z < -8 || z > 12) return -1e9;
+  const { f, up } = swashFront(x, t);
+  if (z > f) return -1e9;
+  const th = (up ? 0.13 : 0.07) * smoothstep(f + 0.2, f - 2.5, z);
+  return groundHeight(x, z) + th;
+}
 export function surfaceHeight(x, z, t) {
+  return Math.max(baseHeight(x, z, t), swashLevel(x, z, t));
+}
+function baseHeight(x, z, t) {
   const env = surfEnvelope(z);
   let sw = 0;
   for (const s of SWELL) sw += s.A * Math.sin(s.k * (s.dx * x + s.dz * z) - s.w * t);
@@ -119,7 +137,16 @@ export function createWater(scene) {
       uniform float uTime; uniform vec2 uCenter;
       varying vec3 vW; varying vec3 vN; varying float vEnv; varying float vPh; varying float vCrest;
       #include <fog_pars_vertex>
+      uniform sampler2D uHCoarse; uniform sampler2D uHFine;
+      varying float vSheet;
       ${GLSL_WAVES}
+      ${GLSL_SWASH}
+      float groundV(vec2 p){
+        vec2 uf = (p - vec2(-72.0, -64.0)) / vec2(144.0, 176.0);
+        if (uf.x > 0.0 && uf.x < 1.0 && uf.y > 0.0 && uf.y < 1.0) return texture2D(uHFine, uf).r;
+        vec2 uc = (p - vec2(-330.0, -1460.0)) / vec2(660.0, 1630.0);
+        return texture2D(uHCoarse, clamp(uc, 0.0, 1.0)).r;
+      }
       void main(){
         vec3 base = position + vec3(uCenter.x, 0.0, uCenter.y);
         vec2 xz = base.xz;
@@ -133,6 +160,16 @@ export function createWater(scene) {
         nrm += vec3(hs - hx, 0.0, hs - hz) / e;
         vec3 wp = base + disp;
         wp.y += hs;
+        // the swash sheet rides up over the sand behind its front
+        vSheet = 0.0;
+        if (wp.z > -8.0 && wp.z < 12.0) {
+          vec3 sw = swashFront(wp.x, uTime);
+          if (wp.z < sw.x) {
+            float th = (sw.z > 0.5 ? 0.13 : 0.07) * smoothstep(sw.x + 0.2, sw.x - 2.5, wp.z);
+            float lvl = groundV(wp.xz) + th;
+            if (lvl > wp.y) { vSheet = 1.0; wp.y = lvl; nrm = mix(nrm, vec3(0.0, 1.0, 0.0), 0.6); }
+          }
+        }
         vN = normalize(nrm);
         vW = wp;
         vEnv = env;
@@ -147,8 +184,9 @@ export function createWater(scene) {
       uniform float uTime; uniform float uDay; uniform float uWarm; uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uUnderColor;
       uniform vec3 uNightDeep; uniform vec3 uDayDeep;
       uniform sampler2D uHCoarse; uniform sampler2D uHFine;
-      varying vec3 vW; varying vec3 vN; varying float vEnv; varying float vPh; varying float vCrest;
+      varying vec3 vW; varying vec3 vN; varying float vEnv; varying float vPh; varying float vCrest; varying float vSheet;
       #include <fog_pars_fragment>
+      ${GLSL_SWASH}
       ${GLSL_NOISE}
       float groundAt(vec2 p){
         vec2 uf = (p - vec2(-72.0, -64.0)) / vec2(144.0, 176.0);
@@ -197,7 +235,15 @@ export function createWater(scene) {
           float swash = smoothstep(0.7, 0.05, depth) * (0.55 + 0.45 * sin(uTime * 0.9 + q.x * 0.05));
           float shoreLine = smoothstep(0.18, 0.0, depth) * 0.9;
           float caps = smoothstep(0.17, 0.22, vCrest) * smoothstep(0.55, 0.7, vnoise(q * 0.8 + uTime * 0.3)) * 0.5;
-          float foam = clamp(crest * 1.1 + swash * lace * 0.9 + shoreLine * (0.4 + lace) + vEnv * 0.08 * lace + caps, 0.0, 1.0);
+          // the leading edge of each swash: a bright lacy line of foam and bubbles
+          vec3 sf = swashFront(q.x, uTime);
+          float dF = sf.x - q.y;
+          float swFront = smoothstep(0.55, 0.04, dF) * smoothstep(-0.12, 0.04, dF);
+          float trail = smoothstep(2.5, 0.3, dF) * step(0.0, dF) * sf.z * 0.3;
+          float bub = smoothstep(0.55, 0.75, vnoise(q * vec2(3.0, 5.0) + vec2(0.0, uTime * 2.0)));
+          float sheetFoam = (swFront * (0.7 + 0.3 * lace) + trail * bub) * smoothstep(-6.0, -1.0, q.y) * (1.0 - smoothstep(10.0, 12.0, q.y));
+          float notSheet = 1.0 - vSheet;
+          float foam = clamp(crest * 1.1 + (swash * lace * 0.55 + shoreLine * (0.25 + lace * 0.6)) * notSheet + vEnv * 0.08 * lace + caps + sheetFoam, 0.0, 1.0);
           vec3 foamCol = mix(vec3(0.55, 1.0, 0.95) * 1.9, vec3(1.0), uDay);
           col = mix(col, foamCol, foam);
           // see the sand through shallow water, opaque offshore

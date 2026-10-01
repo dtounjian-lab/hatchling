@@ -21,7 +21,7 @@ export class Surf extends Chapter {
     P.control = true;
     P.visible = true;
     P.growth = 0;
-    if (P.pos.z > 2 || P.pos.z < -10) P.placeAt(new THREE.Vector3(0, 0, -0.5), Math.PI, 'swim');
+    if (P.pos.z > 12 || P.pos.z < -10) P.placeAt(new THREE.Vector3(0, 0, -0.5), Math.PI, 'swim');
     P.pos.y = surfaceHeight(P.pos.x, P.pos.z, G.time) - P.size * 0.3;
     P.vel.set(0, 0, -1.5);
     P.aimPitch = -0.05;
