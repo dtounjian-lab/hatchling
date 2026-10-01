@@ -38,7 +38,7 @@ export function createSky(scene) {
         float h = d.y;
         float hp = max(h, 0.0);
         vec3 nightTop = vec3(0.006, 0.012, 0.04), nightHor = vec3(0.05, 0.09, 0.17);
-        vec3 dayTop = vec3(0.12, 0.36, 0.78), dayHor = vec3(0.62, 0.82, 0.94);
+        vec3 dayTop = vec3(0.1, 0.32, 0.76), dayHor = vec3(0.5, 0.74, 0.92);
         vec3 night = mix(nightHor, nightTop, pow(hp, 0.45));
         vec3 day = mix(dayHor, dayTop, pow(hp, 0.55));
         vec3 col = mix(night, day, uDay);

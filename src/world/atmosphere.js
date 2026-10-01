@@ -108,7 +108,7 @@ export class Atmosphere {
       this.grade.gain.set(gr.gain[0] + warm * 0.08, gr.gain[1], gr.gain[2] - warm * 0.1); this.grade.lift.set(...gr.lift);
       this.grade.wobble = 1;
     } else {
-      const fogCol = this.tmp.setRGB(0.035, 0.07, 0.14).lerp(C('#a6d4ea'), day).lerp(C('#f0a266'), warm * 0.6);
+      const fogCol = this.tmp.setRGB(0.035, 0.07, 0.14).lerp(C('#8cc4e2'), day).lerp(C('#f0a266'), warm * 0.6);
       this.fog.color.copy(fogCol);
       this.fog.density = lerp(0.0045, 0.0016, day) * (1 + this.fogBoost) * (1 - warm * 0.45);
       this.sun.color.copy(sunCol);

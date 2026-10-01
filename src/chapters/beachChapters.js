@@ -162,7 +162,7 @@ export class Hatching extends Chapter {
         this.stage = 'out';
         G.ui.prompt('');
         for (const e of this.sibEggs) this.hatchSibling(e, rand(300, 1200));
-        setTimeout(() => G.goto(1), 1600);
+        G.later(1.6, () => G.goto(1));
       }
     }
     for (const a of G.crowd.agents) if (a.active) updateRunner(a, dt, G.time, G.obstacles);
@@ -213,7 +213,7 @@ export class Run extends Chapter {
     if (G.crowd.activeCount < 4) {
       for (let i = 0; i < 14; i++) spawnSibling(G.crowd, G.species, new THREE.Vector3(NEST.x + rand(-1.5, 1.5), 0, NEST.z + rand(-2, 1)), rand(0, 1.5));
     }
-    setTimeout(() => { G.stats.siblingsTotal = Math.max(G.stats.siblingsTotal || 0, G.crowd.activeCount); }, 2500);
+    G.later(2.5, () => { G.stats.siblingsTotal = Math.max(G.stats.siblingsTotal || 0, G.crowd.activeCount); });
     G.hud({ meters: 'stamina', growth: false, diet: false });
     G.ui.setObjective('Reach the Gulf. Head for the moonlit surf.');
     G.ui.tips('<b>W A S D</b> crawl<br><b>Mouse</b> look around<br><b>Shift</b> scramble<br>Watch for gull shadows on the sand<br>Grabbed? Tap <b>Space</b> fast<br>Follow the moon, not the porch lights');
@@ -223,7 +223,7 @@ export class Run extends Chapter {
     G.showCard(Run.meta);
     this.caughtLock = false;
     this.ready = false;
-    setTimeout(() => (this.ready = true), 2500);
+    G.later(2.5, () => (this.ready = true));
     this.targets = [];
     this.lastSurf = 0;
   }

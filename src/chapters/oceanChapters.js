@@ -235,7 +235,7 @@ export class Growing extends Chapter {
       this.doneFlag = true;
       G.ui.compass(null);
       G.ui.toast('Fully grown', 'gold');
-      setTimeout(() => G.goto(4), 1800);
+      G.later(1.8, () => G.goto(4));
     }
   }
 
@@ -315,7 +315,7 @@ export class Growing extends Chapter {
     s.pos.set(P.pos.x - 20, Math.min(-8, P.pos.y + 22), P.pos.z + 20);
     s.circle = { t: 45 };
     s.state = 'circle';
-    setTimeout(() => G.ui.toast('A shark circles above. Stay deep until it leaves, but mind your air.', 'bad'), 1500);
+    G.later(1.5, () => G.ui.toast('A shark circles above. Stay deep until it leaves, but mind your air.', 'bad'));
   }
 
   onDeath() {
@@ -463,7 +463,7 @@ export class Gathering extends Chapter {
       this.doneFlag = true;
       G.ui.toast('In perfect harmony', 'gold');
       G.audio.chime();
-      setTimeout(() => G.goto(5), 1500);
+      G.later(1.5, () => G.goto(5));
     }
   }
 

@@ -49,7 +49,9 @@ export function createPost(renderer, scene, camera) {
   const G = grade.uniforms;
   return {
     composer, dof, bloom, grade,
-    update(dt, time, g, focusPos, focusRange) {
+    update(dt, time, g, focusPos, focusRange, bloomThreshold = 0.72) {
+      const lm = bloom.luminanceMaterial;
+      lm.threshold += (bloomThreshold - lm.threshold) * Math.min(1, dt * 3);
       G.get('uSat').value += (g.sat - G.get('uSat').value) * Math.min(1, dt * 2);
       G.get('uCon').value += (g.con - G.get('uCon').value) * Math.min(1, dt * 2);
       G.get('uGain').value.lerp(g.gain, Math.min(1, dt * 2));

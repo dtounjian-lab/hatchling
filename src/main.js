@@ -319,6 +319,12 @@ class Game {
 
   sleep(s) { return new Promise((resolve) => this.timers.push({ t: s, resolve })); }
 
+  // run fn after s seconds of game time, only if the same chapter is still active
+  later(s, fn) {
+    const ch = this.chapter;
+    this.sleep(s).then(() => { if (this.chapter === ch) fn(); });
+  }
+
   // ------------------------------------------------------------------ player events
   onPlayerHurt(amount) {
     const P = this.player;
@@ -543,7 +549,7 @@ class Game {
     const depth = Math.max(0, -camPos.y);
     const rays = under ? this.day * Math.exp(-depth / 45) * (zi === 4 ? 0 : zi === 2 ? 1.1 : 1) * 0.5 + this.godrayBoost * 0.5 : 0;
     this.godrays.update(cam, rays, U.uSunColor.value.clone().lerp(this.atmos.fog.color, 0.3).multiplyScalar(0.8), P.size);
-    this.post.update(dt, time, this.atmos.grade, P.pos, P.size * 6 + 5);
+    this.post.update(dt, time, this.atmos.grade, P.pos, P.size * 6 + 5, under ? 0.72 : lerp(0.72, 1.15, this.day));
 
     const underPlayer = P.mode === 'swim';
     // creatures
