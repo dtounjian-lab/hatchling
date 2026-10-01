@@ -88,7 +88,7 @@ export class Atmosphere {
     const dk = Math.exp(-Math.max(0, depth - 8) * 0.011);
     uc.multiplyScalar(lerp(0.25, 1, dk));
     uc.lerp(NEAR_BLACK, smoothstep(90, 175, depth) * 0.85);
-    uc.lerp(C('#9a7a55'), warm * 0.3);
+    uc.lerp(C('#2f8f95'), warm * 0.18);
     U.uUnderColor.value.copy(uc);
 
     if (under) {
@@ -99,13 +99,16 @@ export class Atmosphere {
       this.sun.intensity = lerp(0.45, 1.9, day) * lightK;
       this.hemi.color.copy(uc).multiplyScalar(2.2).lerp(sunCol, 0.15);
       this.hemi.groundColor.copy(uc).multiplyScalar(0.5);
+      const abyss = smoothstep(60, 140, depth);
+      this.hemi.color.lerp(C('#24346e'), abyss * 0.6);
+      this.hemi.groundColor.lerp(C('#141a3a'), abyss * 0.6);
       this.hemi.intensity = lerp(0.5, 0.95, day) * lerp(0.35, 1, lightK) + 0.15;
       U.uCaustic.value = lerp(0.3, 1.0, day);
       U.uRimColor.value.copy(uc).multiplyScalar(1.4).addScalar(0.05).lerp(C('#1f6f8f'), smoothstep(50, 130, depth) * 0.8);
-      this.fillK = lerp(0.4, 1.35, smoothstep(30, 140, depth)) * (1 + (1 - day) * 0.6);
+      this.fillK = lerp(0.4, 5.5, smoothstep(30, 140, depth)) * (1 + (1 - day) * 0.6);
       this.fill.color.set(zi === 4 ? 0x6fb6ff : 0x9fe0ff);
-      Object.assign(this.grade, { sat: gr.sat + warm * 0.1, con: gr.con });
-      this.grade.gain.set(gr.gain[0] + warm * 0.08, gr.gain[1], gr.gain[2] - warm * 0.1); this.grade.lift.set(...gr.lift);
+      Object.assign(this.grade, { sat: gr.sat + warm * 0.12, con: gr.con + warm * 0.04 });
+      this.grade.gain.set(gr.gain[0] + warm * 0.05, gr.gain[1] + warm * 0.01, gr.gain[2] - warm * 0.03); this.grade.lift.set(...gr.lift);
       this.grade.wobble = 1;
     } else {
       const fogCol = this.tmp.setRGB(0.035, 0.07, 0.14).lerp(C('#8cc4e2'), day).lerp(C('#f0a266'), warm * 0.6);

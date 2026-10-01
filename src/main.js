@@ -561,8 +561,9 @@ class Game {
     const snowCol = this.atmos.fog.color.clone().multiplyScalar(2.2).addScalar(0.12);
     this.snow.update(cam, under, snowCol, zi === 4 ? 1 : (1 - this.day) * 0.6, P.size);
     const depth = Math.max(0, -camPos.y);
-    const rays = under ? this.day * Math.exp(-depth / 45) * (zi === 4 ? 0 : zi === 2 ? 1.1 : 1) * 0.5 + this.godrayBoost * 0.5 : 0;
-    this.godrays.update(cam, rays, U.uSunColor.value.clone().lerp(this.atmos.fog.color, 0.3).multiplyScalar(0.8), P.size);
+    const warm = U.uWarm.value;
+    const rays = under ? (this.day + warm * 0.9) * Math.exp(-depth / 45) * (zi === 4 ? 0 : zi === 2 ? 1.1 : 1) * 0.5 + this.godrayBoost * 0.5 : 0;
+    this.godrays.update(cam, rays, U.uSunColor.value.clone().lerp(this.atmos.fog.color, 0.3 - warm * 0.2).multiplyScalar(0.8 + warm * 0.5), P.size);
     this.post.update(dt, time, this.atmos.grade, P.pos, P.size * 6 + 5, under ? 0.72 : lerp(0.72, 1.15, this.day));
 
     const underPlayer = P.mode === 'swim';
