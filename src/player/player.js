@@ -70,7 +70,7 @@ export class Player {
   get turnRate() { return lerp(3.0, 1.8, this.growth) * this.species.stats.agility * (this.eggs ? 0.9 : 1); }
   get breathCap() { return lerp(40, 115, this.growth) * this.species.stats.dive * 10; }
   get maxHealth() { return 100 * this.species.stats.health; }
-  get landMax() { return lerp(3.1, 1.7, this.growth) * Math.sqrt(this.species.stats.speed) * (this.eggs ? 0.85 : 1); }
+  get landMax() { return lerp(3.1, 2.1, this.growth) * Math.sqrt(this.species.stats.speed) * (this.eggs ? 0.85 : 1); }
 
   forward(out = new THREE.Vector3()) {
     const cp = Math.cos(this.pitch);
@@ -221,10 +221,11 @@ export class Player {
     const wantPitchRate = clamp((pitchTarget - this.pitch) * 4.0, -tr * 0.85, tr * 0.85);
     this.pitchRate = damp(this.pitchRate, wantPitchRate, 6, dt);
     this.pitch = clamp(this.pitch + this.pitchRate * dt, -1.4, 1.4);
-    this.roll = damp(this.roll, clamp(-this.yawRate * 0.42, -0.95, 0.95), 4, dt);
+    const speed = this.vel.length();
+    const sf = clamp(speed / vmax, 0, 1);
+    this.roll = damp(this.roll, clamp(-this.yawRate * (0.22 + 0.32 * sf), -0.95, 0.95), 4, dt);
 
     const fwd = this.forward(_f);
-    const speed = this.vel.length();
     const thrusting = I.forward;
     // stroke cadence syncs to speed; bigger turtles stroke slower
     const cad = thrusting ? lerp(0.75, 1.45, clamp(speed / vmax, 0, 1)) / Math.sqrt(0.6 + size * 0.5) + (this.dashT > 0 ? 0.8 : 0) : 0.28;
@@ -268,7 +269,8 @@ export class Player {
     const sy = surfaceHeight(this.pos.x, this.pos.z, t);
     const top = sy - size * 0.3;
     if (this.pos.y > top) {
-      if (this.vel.y > vmax * 0.42 && this.pitch > 0.28 && this.canBreach !== false) {
+      if (this.vel.y > vmax * 0.36 && this.pitch > 0.24 && this.canBreach !== false) {
+        this.airT = 0;
         this.mode = 'air';
         this.game.onBreach(this.pos, this.vel.length());
       } else {
@@ -310,7 +312,8 @@ export class Player {
     this.pos.addScaledVector(this.vel, dt);
     const hs = Math.hypot(this.vel.x, this.vel.z);
     this.pitch = damp(this.pitch, Math.atan2(this.vel.y, hs), 5, dt);
-    this.roll += dt * 2.2;
+    this.airT = (this.airT || 0) + dt;
+    this.roll = damp(this.roll, Math.sin(this.airT * 4.5) * 0.45, 5, dt);
     this.stroke += dt * 0.6;
     this.amp = damp(this.amp, 0.7, 4, dt);
     this.glide = damp(this.glide, 0.2, 4, dt);

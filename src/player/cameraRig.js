@@ -52,8 +52,14 @@ export class CameraRig {
       des.copy(_t).addScaledVector(dir, -dist);
       des.y += size * 0.75 + 0.2;
       dl.copy(_t).addScaledVector(dir, size * 2.6);
+      // floating at the surface: lift the lens above the waterline to show sky and sea
+      const sY = surfaceHeight(_t.x, _t.z, this.time || 0);
+      if (player.mode === 'swim' && player.pos.y > sY - size * 0.45) {
+        des.y = Math.max(des.y, sY + size * 0.7 + 0.35);
+        dl.y = Math.max(dl.y, sY + size * 0.2);
+      }
       this.lambda = 5.5;
-      this.baseFov = 60 + clamp(sp / player.maxSpeed, 0, 1.5) * 5 + (player.inCurrent ? 9 : 0);
+      this.baseFov = 60 + clamp(sp / player.maxSpeed, 0, 1.5) * 5 + (player.inCurrent ? 9 : 0) + clamp(-player.vel.y / player.maxSpeed, 0, 1) * 6;
     }
     // terrain: pull in if the line to the camera dips into the ground
     const tgt = player.pos;
@@ -68,6 +74,7 @@ export class CameraRig {
   }
 
   update(dt, player, time) {
+    this.time = time;
     this.compute(player, dt);
     let lambda = this.lambda;
     let fov = this.baseFov + player.dashT * 18;
