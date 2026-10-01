@@ -196,12 +196,12 @@ export function createReef(scene) {
 
   const coralMat = std({ roughness: 0.7, color: 0xffffff }, {
     key: 'coral', caustics: 1.1, rim: 0.2,
-    fragDiffuse: 'diffuseColor.rgb *= mix(0.62, 1.2, smoothstep(0.05, 1.3, vObj.y)); diffuseColor.rgb += vec3(0.1, 0.09, 0.07) * smoothstep(1.0, 1.5, vObj.y); float pol = vnoise(vWPos.xz * 38.0 + vWPos.y * 27.0); diffuseColor.rgb *= 0.82 + 0.28 * pol; diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.55, smoothstep(0.72, 0.8, vnoise(vWPos.xz * 60.0 + vWPos.y * 44.0)) * 0.7);',
+    fragDiffuse: '{ float cdn = length(cameraPosition - vWPos); if (cdn < 3.2 && hash12(floor(gl_FragCoord.xy)) > (cdn - 0.9) / 2.3) discard; } diffuseColor.rgb *= mix(0.62, 1.2, smoothstep(0.05, 1.3, vObj.y)); diffuseColor.rgb += vec3(0.1, 0.09, 0.07) * smoothstep(1.0, 1.5, vObj.y); float pol = vnoise(vWPos.xz * 38.0 + vWPos.y * 27.0); diffuseColor.rgb *= 0.82 + 0.28 * pol; diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.55, smoothstep(0.72, 0.8, vnoise(vWPos.xz * 60.0 + vWPos.y * 44.0)) * 0.7);',
     fragEmissive: 'totalEmissiveRadiance += diffuseColor.rgb * 0.06;',
   });
   const brainMat = std({ roughness: 0.8, color: 0xffffff }, {
     key: 'brain', caustics: 1.1,
-    fragDiffuse: /* glsl */ `
+    fragDiffuse: /* glsl */ `{ float cdn = length(cameraPosition - vWPos); if (cdn < 3.2 && hash12(floor(gl_FragCoord.xy)) > (cdn - 0.9) / 2.3) discard; } 
       float mz = abs(sin(fbm2(vObj.xz * 4.0 + vObj.y * 2.0) * 26.0));
       diffuseColor.rgb *= mix(0.5, 1.08, smoothstep(0.1, 0.5, mz));
       diffuseColor.rgb *= 0.9 + 0.15 * vnoise(vObj.xz * 30.0);
@@ -209,7 +209,7 @@ export function createReef(scene) {
   });
   const boulderMat = std({ roughness: 0.85, color: 0xffffff }, {
     key: 'boulder', caustics: 1.1,
-    fragDiffuse: /* glsl */ `
+    fragDiffuse: /* glsl */ `{ float cdn = length(cameraPosition - vWPos); if (cdn < 3.2 && hash12(floor(gl_FragCoord.xy)) > (cdn - 0.9) / 2.3) discard; } 
       vec2 vr = voronoi3(vObj * 11.0);
       float cup = smoothstep(0.32, 0.12, vr.x);
       diffuseColor.rgb *= mix(1.0, 0.55, cup) * (0.85 + 0.2 * vnoise(vObj.xz * 5.0));
@@ -218,7 +218,7 @@ export function createReef(scene) {
   });
   const barrelMat = std({ roughness: 0.9, color: 0xffffff, side: THREE.DoubleSide }, {
     key: 'barrel', caustics: 1.0,
-    fragDiffuse: 'diffuseColor.rgb *= (0.75 + 0.3 * abs(sin(atan(vObj.x, vObj.z) * 9.0))) * (0.8 + 0.3 * smoothstep(0.0, 1.0, vObj.y)); diffuseColor.rgb *= 0.9 + 0.2 * vnoise(vObj.xy * 25.0);',
+    fragDiffuse: '{ float cdn = length(cameraPosition - vWPos); if (cdn < 3.2 && hash12(floor(gl_FragCoord.xy)) > (cdn - 0.9) / 2.3) discard; } diffuseColor.rgb *= (0.75 + 0.3 * abs(sin(atan(vObj.x, vObj.z) * 9.0))) * (0.8 + 0.3 * smoothstep(0.0, 1.0, vObj.y)); diffuseColor.rgb *= 0.9 + 0.2 * vnoise(vObj.xy * 25.0);',
   });
   const fanMat = std({ roughness: 0.8, color: 0xffffff, side: THREE.DoubleSide, alphaTest: 0.5, transparent: false }, {
     key: 'fan', caustics: 0.8,
@@ -243,12 +243,12 @@ export function createReef(scene) {
   });
   const tubeMat = std({ roughness: 0.6, color: 0xffffff, side: THREE.DoubleSide }, {
     key: 'tube', caustics: 1.0,
-    fragDiffuse: /* glsl */ `diffuseColor.rgb *= 0.75 + 0.45 * smoothstep(0.2, 1.3, vObj.y);`,
+    fragDiffuse: /* glsl */ `{ float cdn = length(cameraPosition - vWPos); if (cdn < 3.2 && hash12(floor(gl_FragCoord.xy)) > (cdn - 0.9) / 2.3) discard; } diffuseColor.rgb *= 0.75 + 0.45 * smoothstep(0.2, 1.3, vObj.y);`,
   });
   const anemMat = std({ roughness: 0.5, color: 0xffffff }, {
     key: 'anem', caustics: 0.8, rim: 0.3,
     vertexTransform: SWAY(1.1),
-    fragDiffuse: /* glsl */ `diffuseColor.rgb = mix(diffuseColor.rgb * 0.6, diffuseColor.rgb * 1.3 + 0.12, smoothstep(0.15, 0.55, vObj.y));`,
+    fragDiffuse: /* glsl */ `{ float cdn = length(cameraPosition - vWPos); if (cdn < 3.2 && hash12(floor(gl_FragCoord.xy)) > (cdn - 0.9) / 2.3) discard; } diffuseColor.rgb = mix(diffuseColor.rgb * 0.6, diffuseColor.rgb * 1.3 + 0.12, smoothstep(0.15, 0.55, vObj.y));`,
     fragEmissive: /* glsl */ `totalEmissiveRadiance += diffuseColor.rgb * smoothstep(0.5, 0.62, vObj.y) * 0.5;`,
   });
   const whipMat = std({ roughness: 0.6, color: 0xffffff }, { key: 'whip', caustics: 0.8, vertexTransform: SWAY(0.08), fragDiffuse: '{ float cdn = length(cameraPosition - vWPos); if (cdn < 3.2 && hash12(floor(gl_FragCoord.xy)) > (cdn - 0.9) / 2.3) discard; }' });

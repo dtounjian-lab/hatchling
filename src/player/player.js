@@ -230,6 +230,10 @@ export class Player {
     this.stroke += dt * cad;
     this.amp = damp(this.amp, thrusting ? 1 : 0.28, 3, dt);
     this.glide = damp(this.glide, thrusting || this.dashT > 0 ? 0 : clamp(speed / (vmax * 0.35), 0, 0.85), 2.5, dt);
+    // each downstroke: a soft whoosh and a puff of bubbles off the flippers
+    const strokeN = Math.floor(this.stroke + 0.5);
+    if (thrusting && strokeN !== this.lastStroke) this.game.onStroke && this.game.onStroke();
+    this.lastStroke = strokeN;
     if (thrusting) {
       const ph = this.stroke * TAU;
       const power = 0.32 + 0.68 * Math.pow(Math.max(0, -Math.cos(ph)), 1.5) * 1.35;

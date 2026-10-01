@@ -50,6 +50,7 @@ export class AudioEngine {
   }
 
   init() {
+    if (this.muted) return; // automated test runs stay silent
     if (this.ready) { this.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
@@ -312,6 +313,10 @@ export class AudioEngine {
     const t = this.now;
     this.tone(t, 'sine', 120, 40, 0.4, 0.8);
     this.noiseHit(t, 0.3, 'lowpass', 1200, 200, 0.5);
+  }
+  stroke(v = 0.5) {
+    if (!this.ready) return;
+    this.noiseHit(this.now, 0.35, 'bandpass', 260, 700, 0.07 * v, 0.9);
   }
   dash() {
     if (!this.ready) return;

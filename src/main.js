@@ -50,6 +50,8 @@ class Game {
   constructor() {
     this.ui = new UI();
     this.audio = new AudioEngine();
+    // test runs (?nolock or ?mute) never start audio
+    this.audio.muted = params.has('nolock') || params.has('mute');
     this.time = 0;
     this.day = 0;
     this.state = 'loading';
@@ -363,6 +365,18 @@ class Game {
   defaultRespawn() {
     const P = this.player;
     this.respawnAt(P.pos.clone().setY(Math.min(-2, P.pos.y + 4)), P.yaw);
+  }
+
+  onStroke() {
+    const P = this.player;
+    if (P.atSurface && P.pos.y > -0.3) return;
+    this.audio.stroke(clamp(P.vel.length() / P.maxSpeed, 0.2, 1));
+    const f = P.forward();
+    const side = new THREE.Vector3(f.z, 0, -f.x).normalize();
+    for (const s of [-1, 1]) {
+      const p = P.pos.clone().addScaledVector(side, s * P.size * 0.55).addScaledVector(f, P.size * 0.1);
+      this.particles.bubbles.burst(p, 3, 0.5, 1.2, 0.02 + P.size * 0.015, null, 0.3);
+    }
   }
 
   onDash() {

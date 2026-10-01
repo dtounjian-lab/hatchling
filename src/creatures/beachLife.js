@@ -155,6 +155,8 @@ function makeHuman() {
     const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, L - 0.5, 6, 16), skin);
     shin.scale.set(1, 1, 1.05);
     shin.position.y = -L / 2;
+    const kneeCap = new THREE.Mesh(new THREE.SphereGeometry(0.36, 14, 10), skin);
+    knee.add(kneeCap);
     const ankle = new THREE.Group(); ankle.position.y = -L;
     const foot = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.9, 6, 12), skin);
     foot.rotation.x = Math.PI / 2;
